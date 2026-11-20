@@ -59,6 +59,22 @@
   #rankList .sub { display: block; font-size: 12px; color: var(--muted); }
   #rankList .gold { font-weight: 700; color: var(--accent); }
   #rankNote { font-size: 13px; margin: 8px 0 0; }
+  #petBox { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 16px; }
+  #petBox[hidden] { display: none; }
+  #petBox .card { max-width: 520px; }
+  .eggRow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .eggRow button { margin: 0; font-size: 14px; }
+  .eggRow button small { display: block; font-weight: 500; font-size: 11px; opacity: .8; }
+  #hatchMsg { min-height: 1.5em; font-weight: 700; margin: 10px 0 4px; }
+  #petList { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; margin-top: 8px; text-align: left; }
+  .pet { background: #1b1713; border-radius: 8px; padding: 8px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; border: 1px solid transparent; min-width: 0; }
+  .pet.on { border-color: var(--accent); background: #3a2f1c; }
+  .pet .nm { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .pet .rar { font-size: 11px; font-weight: 700; }
+  .pet .bn { color: var(--muted); font-size: 12px; }
+  .pet .acts { display: flex; gap: 4px; }
+  .pet .acts button { margin: 0; padding: 5px 6px; font-size: 12px; }
+  .r-common { color: #c9c2b4; } .r-rare { color: #6aa3f0; } .r-epic { color: #c27bf0; } .r-legend { color: #ffcb2e; }
   .row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; margin: 4px 0; color: var(--text); }
   .hudBtn { pointer-events: auto; width: auto; margin: 0; padding: 8px 12px; font-size: 13px; background: var(--panel); color: var(--text); border: 1px solid #574b3b; }
   #autoBtn.on { background: #3a7bd5; border-color: #6aa3f0; color: #fff; }
@@ -92,10 +108,11 @@
       <button id="autoBtn" class="hudBtn" type="button">🤖 자율 모드 OFF (T)</button>
       <button id="codeBtn" class="hudBtn" type="button">🔑 코드 (Enter)</button>
       <button id="rankBtn" class="hudBtn" type="button">🏆 순위 (R)</button>
+      <button id="petBtn" class="hudBtn" type="button">🐾 펫 (P)</button>
     </div>
     <div id="autoStatus"></div>
   </div>
-  <div id="help" class="panel">WASD 이동 · 마우스 시점 (드래그도 가능)<br>클릭(누르고 있기) 블록 캐기 · Space 점프<br>B 상점 · T 자율 모드 · R 순위 · Enter 코드 · Esc 일시정지</div>
+  <div id="help" class="panel">WASD 이동 · 마우스 시점 (드래그도 가능)<br>클릭(누르고 있기) 블록 캐기 · Space 점프<br>B 상점 · P 펫 · T 자율 모드 · R 순위<br>Enter 코드 · Esc 일시정지</div>
   <div id="mobile">
     <div id="joy"><div id="knob"></div></div>
     <div class="mbtn" id="mineBtn">캐기</div>
@@ -130,6 +147,21 @@
     <ol id="rankList"></ol>
     <p id="rankNote"></p>
     <button type="button" id="rankClose" class="ghost">닫기 (R)</button>
+  </div>
+</div>
+
+<div id="petBox" hidden>
+  <div class="card">
+    <h2>🐾 펫</h2>
+    <p style="margin-top:0">알을 부화시켜 펫을 얻고, 최대 3마리까지 데리고 다니세요. 데리고 다니는 펫의 능력이 모두 더해집니다.</p>
+    <div class="eggRow">
+      <button id="eggBasic" type="button">🥚 산 알 <small>150 G · 희귀 이상 12%</small></button>
+      <button id="eggGold" type="button">🌟 황금 알 <small>1,500 G · 희귀 이상 60%</small></button>
+    </div>
+    <div id="hatchMsg"></div>
+    <div id="petSummary" class="row" style="justify-content:center;color:var(--muted)"></div>
+    <div id="petList"></div>
+    <button type="button" id="petClose" class="ghost">닫기 (P)</button>
   </div>
 </div>
 
@@ -197,8 +229,42 @@ const powerCost = () => Math.round(30 * Math.pow(3.2, state.power));
 const speedCost = () => Math.round(20 * Math.pow(2.4, state.speed));
 const bagCost = () => Math.round(25 * Math.pow(2.1, state.bag));
 const BAG_MAX_LV = 10;
-const bagCap = () => 30 + state.bag * 20;
-const damage = () => 1 + state.power * 1.6;
+// ---------- 펫 ----------
+const RARITY = {
+  common: { name: '일반', cls: 'r-common', release: 40 },
+  rare:   { name: '희귀', cls: 'r-rare',   release: 150 },
+  epic:   { name: '영웅', cls: 'r-epic',   release: 500 },
+  legend: { name: '전설', cls: 'r-legend', release: 2500 },
+};
+// look: 몸 색, 머리 색, 크기, 날개/귀/꼬리 여부
+const PETS = {
+  mole:     { name: '굴착 두더지', emoji: '🦫', rarity: 'common', bonus: { dmg: 0.15 },             desc: '채굴 피해 +15%',  body: 0x6b5344, headC: 0x7d6352, size: 0.42, ears: false, tail: false, wings: false },
+  squirrel: { name: '도토리 다람쥐', emoji: '🐿️', rarity: 'common', bonus: { sell: 0.10 },          desc: '판매가 +10%',    body: 0xc07a3c, headC: 0xd08a4c, size: 0.38, ears: true,  tail: true,  wings: false },
+  pebble:   { name: '조약돌 달팽이', emoji: '🐌', rarity: 'common', bonus: { bag: 10 },             desc: '가방 +10칸',     body: 0x9a948c, headC: 0xc9b98a, size: 0.36, ears: false, tail: false, wings: false },
+  bat:      { name: '동굴 박쥐', emoji: '🦇', rarity: 'rare', bonus: { speed: 0.15 },               desc: '이동 속도 +15%', body: 0x4a3d5c, headC: 0x5a4a6e, size: 0.34, ears: true,  tail: false, wings: true, fly: true },
+  fox:      { name: '광맥 여우', emoji: '🦊', rarity: 'rare', bonus: { sell: 0.25 },                desc: '판매가 +25%',    body: 0xe0702a, headC: 0xf08038, size: 0.42, ears: true,  tail: true,  wings: false },
+  turtle:   { name: '바위 거북', emoji: '🐢', rarity: 'epic', bonus: { bag: 30 },                   desc: '가방 +30칸',     body: 0x5d7a4a, headC: 0x7f9a62, size: 0.5,  ears: false, tail: false, wings: false },
+  golem:    { name: '수정 골렘', emoji: '💎', rarity: 'epic', bonus: { dmg: 0.45 },                 desc: '채굴 피해 +45%', body: 0x7fd8e8, headC: 0x9fe8f4, size: 0.5,  ears: false, tail: false, wings: false, glow: true },
+  dragon:   { name: '용암 드래곤', emoji: '🐉', rarity: 'legend', bonus: { dmg: 0.3, autoMine: 1 }, desc: '피해 +30%, 근처 블록을 스스로 캠', body: 0xd8402a, headC: 0xf05a3a, size: 0.5, ears: true, tail: true, wings: true, fly: true, glow: true },
+  owl:      { name: '별빛 부엉이', emoji: '🦉', rarity: 'legend', bonus: { sell: 0.6, speed: 0.2 }, desc: '판매가 +60%, 속도 +20%', body: 0x3b4a8a, headC: 0x5466a8, size: 0.44, ears: true, tail: false, wings: true, fly: true, glow: true },
+};
+const PET_KEYS = Object.keys(PETS);
+const EGGS = {
+  basic: { cost: 150,  odds: { common: 0.88, rare: 0.10, epic: 0.018, legend: 0.002 } },
+  gold:  { cost: 1500, odds: { common: 0.40, rare: 0.40, epic: 0.16,  legend: 0.04 } },
+};
+const MAX_PETS = 30, MAX_EQUIP = 3;
+if (!Array.isArray(state.pets)) state.pets = [];
+if (!Array.isArray(state.equip)) state.equip = [];
+state.pets = state.pets.filter(k => PETS[k]);
+state.equip = state.equip.filter(i => i >= 0 && i < state.pets.length).slice(0, MAX_EQUIP);
+function petBonus() {
+  const b = { dmg: 0, sell: 0, speed: 0, bag: 0, autoMine: 0 };
+  for (const i of state.equip) { const pb = PETS[state.pets[i]].bonus; for (const k in pb) b[k] += pb[k]; }
+  return b;
+}
+const bagCap = () => 30 + state.bag * 20 + petBonus().bag;
+const damage = () => (1 + state.power * 1.6) * (1 + petBonus().dmg);
 const swingTime = () => Math.max(0.16, 0.42 * Math.pow(0.85, state.speed));
 const bagCount = () => ITEM_ORDER.reduce((n, k) => n + state.inv[k], 0);
 
@@ -547,8 +613,8 @@ function moveHorizontal(axis, delta) {
 
 // ---------- 입력 ----------
 const keys = {};
-let mouseDown = false, playing = false, shopOpen = false, codeOpen = false, rankOpen = false;
-const menuOpen = () => shopOpen || codeOpen || rankOpen;
+let mouseDown = false, playing = false, shopOpen = false, codeOpen = false, rankOpen = false, petOpen = false;
+const menuOpen = () => shopOpen || codeOpen || rankOpen || petOpen;
 const isTouch = matchMedia('(pointer: coarse)').matches;
 const joy = { x: 0, y: 0 };
 const overlay = document.getElementById('overlay'), shopEl = document.getElementById('shop');
@@ -594,6 +660,8 @@ const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'Arro
 document.addEventListener('keydown', e => {
   if (codeOpen) { if (e.code === 'Escape') closeCode(); return; }
   if (rankOpen) { if (e.code === 'Escape' || e.code === 'KeyR') closeRank(); return; }
+  if (petOpen) { if (e.code === 'Escape' || e.code === 'KeyP') closePets(); return; }
+  if (e.code === 'KeyP' && playing && !shopOpen) { openPets(); return; }
   if (e.code === 'KeyR' && playing && !shopOpen) { openRank(); return; }
   if ((e.code === 'Enter' || e.code === 'NumpadEnter') && playing && !shopOpen) { e.preventDefault(); openCode(); return; }
   keys[e.code] = true;
@@ -645,7 +713,7 @@ function toggleShop() {
   if (shopOpen) { if (isLocked()) document.exitPointerLock?.(); renderShop(); }
   else tryLock();
 }
-const inventoryValue = () => ITEM_ORDER.reduce((s, k) => s + state.inv[k] * ITEMS[k].value, 0);
+const inventoryValue = () => Math.round(ITEM_ORDER.reduce((s, k) => s + state.inv[k] * ITEMS[k].value, 0) * (1 + petBonus().sell));
 const nearShop = () => Math.hypot(player.pos.x - SHOP_POS.x, player.pos.z - SHOP_POS.z) < 7.5;
 function renderShop() {
   const near = nearShop();
@@ -735,6 +803,7 @@ function updateHud() {
   statsEl.innerHTML = `💰 <b>${state.money} G</b><br>⛏️ ${PICK_NAMES[state.power]} 곡괭이<br>`
     + `🎒 <span class="${full ? 'full' : ''}">${bagCount()}/${bagCap()}${full ? ' 가득!' : ''}</span><br>`
     + `⛰️ 높이 ${Math.max(0, Math.floor(player.pos.y))}m · 캔 블록 ${state.total}`
+    + (state.equip.length ? `<br>🐾 ${state.equip.map(i => PETS[state.pets[i]].emoji).join(' ')}` : '')
     + (rank.myPlace ? `<br>🏆 내 순위 <b>${rank.myPlace}위</b>` : '')
     + (state.turbo ? '<br>🛡️ <b>방탄유리 질주 ON</b>' : '');
   invEl.innerHTML = ITEM_ORDER.filter(k => state.inv[k] > 0).map(k =>
@@ -771,6 +840,182 @@ document.getElementById('codeClose').onclick = closeCode;
 const codeBtn = document.getElementById('codeBtn');
 codeBtn.addEventListener('mousedown', e => e.stopPropagation());
 codeBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!shopOpen) openCode(); });
+
+// ---------- 펫 창 ----------
+const petBox = document.getElementById('petBox'), petList = document.getElementById('petList'), hatchMsg = document.getElementById('hatchMsg');
+function openPets() {
+  if (!playing) return;
+  petOpen = true; mouseDown = false;
+  for (const k in keys) keys[k] = false;
+  if (isLocked()) document.exitPointerLock?.();
+  hatchMsg.textContent = '';
+  petBox.hidden = false; renderPets();
+}
+function closePets() { petOpen = false; petBox.hidden = true; tryLock(); }
+document.getElementById('petClose').onclick = closePets;
+const petBtn = document.getElementById('petBtn');
+petBtn.addEventListener('mousedown', e => e.stopPropagation());
+petBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!shopOpen && !codeOpen && !rankOpen) openPets(); });
+
+function hatch(kind) {
+  const egg = EGGS[kind];
+  if (state.money < egg.cost || state.pets.length >= MAX_PETS) return;
+  state.money -= egg.cost;
+  let r = Math.random(), rarity = 'common';
+  for (const [k, p] of Object.entries(egg.odds)) { if (r < p) { rarity = k; break; } r -= p; }
+  const pool = PET_KEYS.filter(k => PETS[k].rarity === rarity);
+  const key = pool[Math.floor(Math.random() * pool.length)];
+  state.pets.push(key);
+  if (state.equip.length < MAX_EQUIP) state.equip.push(state.pets.length - 1);
+  const pet = PETS[key];
+  hatchMsg.innerHTML = '';
+  const span = document.createElement('span'); span.className = RARITY[rarity].cls;
+  span.textContent = `🐣 ${pet.emoji} ${pet.name} (${RARITY[rarity].name}) 탄생!`;
+  hatchMsg.appendChild(span);
+  sound(rarity === 'legend' ? 1200 : rarity === 'epic' ? 980 : 760, rarity === 'legend' ? 0.6 : 0.3, 'triangle', 0.15);
+  if (rarity === 'legend') toast(`🌟 전설 펫 ${pet.name}!`, '#ffcb2e');
+  save(); buildPetMeshes(); renderPets(); updateHud();
+}
+document.getElementById('eggBasic').onclick = () => hatch('basic');
+document.getElementById('eggGold').onclick = () => hatch('gold');
+
+function toggleEquip(i) {
+  const at = state.equip.indexOf(i);
+  if (at >= 0) state.equip.splice(at, 1);
+  else if (state.equip.length < MAX_EQUIP) state.equip.push(i);
+  else { hatchMsg.textContent = `펫은 최대 ${MAX_EQUIP}마리까지 데리고 다닐 수 있어요.`; return; }
+  save(); buildPetMeshes(); renderPets(); updateHud();
+}
+function releasePet(i) {
+  const key = state.pets[i], gold = RARITY[PETS[key].rarity].release;
+  state.pets.splice(i, 1);
+  state.equip = state.equip.filter(j => j !== i).map(j => j > i ? j - 1 : j);
+  state.money += gold;
+  hatchMsg.textContent = `${PETS[key].name}을(를) 놓아주고 ${gold} G를 받았어요.`;
+  save(); buildPetMeshes(); renderPets(); updateHud();
+}
+function renderPets() {
+  const full = state.pets.length >= MAX_PETS;
+  for (const [id, kind] of [['eggBasic', 'basic'], ['eggGold', 'gold']]) document.getElementById(id).disabled = full || state.money < EGGS[kind].cost;
+  const b = petBonus(), parts = [];
+  if (b.dmg) parts.push(`피해 +${Math.round(b.dmg * 100)}%`);
+  if (b.sell) parts.push(`판매가 +${Math.round(b.sell * 100)}%`);
+  if (b.speed) parts.push(`속도 +${Math.round(b.speed * 100)}%`);
+  if (b.bag) parts.push(`가방 +${b.bag}`);
+  if (b.autoMine) parts.push('자동 채굴');
+  document.getElementById('petSummary').textContent =
+    `💰 ${state.money} G · 펫 ${state.pets.length}/${MAX_PETS} · 데리고 다님 ${state.equip.length}/${MAX_EQUIP}` + (parts.length ? ` · ${parts.join(', ')}` : '');
+  // 장착한 펫 먼저, 그다음 등급 높은 순
+  const order = state.pets.map((k, i) => i).sort((a, c) => {
+    const ea = state.equip.includes(a) ? 0 : 1, ec = state.equip.includes(c) ? 0 : 1;
+    if (ea !== ec) return ea - ec;
+    const rk = ['legend', 'epic', 'rare', 'common'];
+    return rk.indexOf(PETS[state.pets[a]].rarity) - rk.indexOf(PETS[state.pets[c]].rarity);
+  });
+  petList.replaceChildren(...order.map(i => {
+    const pet = PETS[state.pets[i]], on = state.equip.includes(i);
+    const el = document.createElement('div'); el.className = 'pet' + (on ? ' on' : '');
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = `${pet.emoji} ${pet.name}`;
+    const rar = document.createElement('div'); rar.className = 'rar ' + RARITY[pet.rarity].cls; rar.textContent = RARITY[pet.rarity].name;
+    const bn = document.createElement('div'); bn.className = 'bn'; bn.textContent = pet.desc;
+    const acts = document.createElement('div'); acts.className = 'acts';
+    const eq = document.createElement('button'); eq.type = 'button'; eq.textContent = on ? '해제' : '데리고 다니기';
+    if (on) eq.className = 'ghost';
+    eq.onclick = () => toggleEquip(i);
+    const rl = document.createElement('button'); rl.type = 'button'; rl.className = 'ghost'; rl.textContent = `놓아주기 +${RARITY[pet.rarity].release}G`;
+    rl.onclick = () => {
+      if (!rl.dataset.armed) { rl.dataset.armed = '1'; rl.textContent = '정말요?'; setTimeout(() => { if (rl.isConnected) { delete rl.dataset.armed; rl.textContent = `놓아주기 +${RARITY[pet.rarity].release}G`; } }, 2500); return; }
+      releasePet(i);
+    };
+    acts.append(eq, rl);
+    el.append(nm, rar, bn, acts);
+    return el;
+  }));
+  if (!state.pets.length) {
+    const empty = document.createElement('p'); empty.style.gridColumn = '1 / -1'; empty.style.textAlign = 'center';
+    empty.textContent = '아직 펫이 없어요. 광물을 팔아 모은 골드로 알을 부화시켜 보세요!';
+    petList.appendChild(empty);
+  }
+}
+
+// 3D 펫: 블록으로 만든 작은 동물이 플레이어를 따라다님
+const petMeshes = [];
+function makePetMesh(pet) {
+  const g = new THREE.Group(), s = pet.size;
+  const bodyM = new THREE.MeshLambertMaterial({ color: pet.body, emissive: pet.glow ? new THREE.Color(pet.body).multiplyScalar(0.25) : 0x000000 });
+  const headM = new THREE.MeshLambertMaterial({ color: pet.headC, emissive: pet.glow ? new THREE.Color(pet.headC).multiplyScalar(0.25) : 0x000000 });
+  const eyeM = new THREE.MeshBasicMaterial({ color: 0x111111 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(s, s * 0.8, s * 1.2), bodyM); body.position.y = s * 0.4;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(s * 0.8, s * 0.75, s * 0.75), headM); head.position.set(0, s * 0.85, -s * 0.65);
+  const eyeG = new THREE.BoxGeometry(s * 0.14, s * 0.14, 0.02);
+  const e1 = new THREE.Mesh(eyeG, eyeM); e1.position.set(-s * 0.2, s * 0.92, -s * 1.03);
+  const e2 = e1.clone(); e2.position.x = s * 0.2;
+  g.add(body, head, e1, e2);
+  if (pet.ears) for (const sx of [-1, 1]) { const ear = new THREE.Mesh(new THREE.BoxGeometry(s * 0.18, s * 0.3, s * 0.12), headM); ear.position.set(sx * s * 0.25, s * 1.32, -s * 0.6); g.add(ear); }
+  if (pet.tail) { const tail = new THREE.Mesh(new THREE.BoxGeometry(s * 0.22, s * 0.6, s * 0.22), bodyM); tail.position.set(0, s * 0.7, s * 0.7); tail.rotation.x = 0.5; g.add(tail); }
+  const wings = [];
+  if (pet.wings) for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group(); pivot.position.set(sx * s * 0.5, s * 0.6, 0);
+    const w = new THREE.Mesh(new THREE.BoxGeometry(s * 0.9, s * 0.06, s * 0.7), bodyM); w.position.x = sx * s * 0.45;
+    pivot.add(w); g.add(pivot); wings.push({ pivot, sx });
+  }
+  g.traverse(m => { if (m.isMesh) m.castShadow = true; });
+  return { g, wings, pet, phase: Math.random() * 10, pos: new THREE.Vector3(), mineCd: 2 + Math.random() * 2 };
+}
+function buildPetMeshes() {
+  for (const p of petMeshes) scene.remove(p.g);
+  petMeshes.length = 0;
+  state.equip.forEach((i, n) => {
+    const pm = makePetMesh(PETS[state.pets[i]]);
+    pm.slot = n;
+    pm.pos.set(player.pos.x + (n - 1) * 1.2, player.pos.y, player.pos.z - 1);
+    pm.g.position.copy(pm.pos);
+    scene.add(pm.g); petMeshes.push(pm);
+  });
+}
+const PET_SLOTS = [[-2.4, -3.2], [2.4, -3.2], [-4.2, -1.4]]; // 1인칭에서 보이도록 양옆 살짝 앞쪽
+const petTmp = new THREE.Vector3();
+function updatePets(dt) {
+  const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
+  for (const pm of petMeshes) {
+    const [ox, oz] = PET_SLOTS[pm.slot];
+    // 플레이어 옆 자리로 따라감 (로컬 → 월드)
+    petTmp.set(player.pos.x + ox * cy + oz * sy, player.pos.y, player.pos.z - ox * sy + oz * cy);
+    const far = pm.pos.distanceTo(petTmp);
+    if (far > 14) pm.pos.copy(petTmp);
+    pm.pos.lerp(petTmp, Math.min(1, dt * (far > 3 ? 6 : 3)));
+    pm.phase += dt * (far > 0.3 ? 12 : 4);
+    const fly = pm.pet.fly ? 0.7 + Math.sin(pm.phase * 0.35) * 0.15 : 0;
+    const hop = pm.pet.fly ? 0 : Math.abs(Math.sin(pm.phase * 0.8)) * (far > 0.3 ? 0.25 : 0.05);
+    pm.g.position.set(pm.pos.x, pm.pos.y + fly + hop, pm.pos.z);
+    const look = far > 0.2 ? Math.atan2(-(petTmp.x - pm.g.position.x), -(petTmp.z - pm.g.position.z)) : player.yaw + Math.PI; // 멈춰 있으면 나를 바라봄
+    pm.g.rotation.y += angleTo(pm.g.rotation.y, look) * Math.min(1, dt * 8);
+    for (const w of pm.wings) w.pivot.rotation.z = w.sx * Math.sin(pm.phase * 1.6) * 0.6;
+    // 자동 채굴 펫: 주변의 캘 수 있는 블록을 스스로 깸
+    if (pm.pet.bonus.autoMine) {
+      pm.mineCd -= dt;
+      if (pm.mineCd <= 0) {
+        pm.mineCd = 4;
+        if (bagCount() + pickups.length < bagCap()) {
+          let best = null, bd = 6;
+          const px = Math.round(player.pos.x), py = Math.floor(player.pos.y), pz = Math.round(player.pos.z);
+          for (let x = px - 4; x <= px + 4; x++) for (let y = Math.max(0, py - 2); y <= py + 3; y++) for (let z = pz - 4; z <= pz + 4; z++) {
+            const t = blockAt(x, y, z);
+            if (!t || BLOCKS[t].tier > state.power || !exposed(x, y, z)) continue;
+            const d = Math.hypot(x - player.pos.x, y - player.pos.y, z - player.pos.z) - ITEMS[BLOCKS[t].item].value * 0.02;
+            if (d < bd) { bd = d; best = { x, y, z, i: idx(x, y, z), type: t }; }
+          }
+          if (best) {
+            burst(new THREE.Vector3(best.x, best.y + 0.5, best.z), 0xff7a2a, 10, 3);
+            damageMap.delete(best.i);
+            breakBlock(best);
+          }
+        }
+      }
+    }
+  }
+}
+buildPetMeshes();
 
 // ---------- 순위 (공유 저장소) ----------
 // scores/<내 id> 문서 하나에 내 기록을 쓰고, 모두의 기록을 번 골드 순으로 구독.
@@ -1031,7 +1276,7 @@ function update(dt) {
   const len = Math.hypot(mx, mz); if (len > 1) { mx /= len; mz /= len; }
   fwd.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   right.set(-fwd.z, 0, fwd.x);
-  const speed = (keys.ShiftLeft ? 7 : 4.5) * (state.turbo ? TURBO_MULT : 1);
+  const speed = (keys.ShiftLeft ? 7 : 4.5) * (state.turbo ? TURBO_MULT : 1) * (1 + petBonus().speed);
   wish.set(0, 0, 0).addScaledVector(fwd, mz).addScaledVector(right, mx).multiplyScalar(speed);
   player.vel.x = THREE.MathUtils.lerp(player.vel.x, wish.x, Math.min(1, dt * 12));
   player.vel.z = THREE.MathUtils.lerp(player.vel.z, wish.z, Math.min(1, dt * 12));
@@ -1134,6 +1379,7 @@ function update(dt) {
     }
   }
   if (worldDirty && (worldSaveTimer -= dt) <= 0) { worldSaveTimer = 3; saveWorld(); }
+  updatePets(dt);
   hudTimer -= dt; if (hudTimer <= 0) { hudTimer = 0.5; updateHud(); }
 }
 let hudTimer = 0;
