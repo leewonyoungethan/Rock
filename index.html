@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>돌 캐기 3D</title>
+<style>
+  :root {
+    --panel: rgba(20, 18, 16, 0.82);
+    --text: #f3ead8;
+    --muted: #b9ab90;
+    --accent: #f0b54a;
+    --bad: #e2675a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1714; color: var(--text);
+    font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  canvas { display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); }
+  #crosshair::before, #crosshair::after { content: ""; position: absolute; background: rgba(255,255,255,.85); }
+  #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+  #crosshair::after { top: 8px; left: 0; height: 2px; width: 18px; }
+  #target { position: absolute; left: 50%; top: calc(50% + 28px); transform: translateX(-50%); text-align: center;
+    font-size: 13px; text-shadow: 0 1px 2px #000; display: none; }
+  #target .bar { width: 140px; height: 7px; background: rgba(0,0,0,.5); border-radius: 4px; margin: 4px auto 0; overflow: hidden; }
+  #target .fill { height: 100%; background: var(--accent); width: 100%; }
+  #target.locked .fill { background: var(--bad); }
+  .panel { background: var(--panel); border-radius: 10px; padding: 10px 12px; }
+  #stats { position: absolute; top: 12px; left: 12px; font-size: 14px; line-height: 1.6; min-width: 170px; }
+  #stats b { color: var(--accent); }
+  #inv { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 24px); }
+  .slot { background: var(--panel); border-radius: 8px; padding: 6px 9px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; }
+  #toast { position: absolute; top: 18%; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 700;
+    text-shadow: 0 2px 4px #000; opacity: 0; transition: opacity .3s; white-space: nowrap; }
+  #help { position: absolute; top: 12px; right: 12px; font-size: 12px; color: var(--muted); line-height: 1.6; text-align: right; }
+  #overlay, #shop { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 16px; }
+  #overlay .card, #shop .card { background: #241f1a; border: 1px solid #3d342a; border-radius: 14px; padding: 22px; max-width: 420px; width: 100%; text-align: center; }
+  h1 { margin: 0 0 6px; font-size: 28px; }
+  h2 { margin: 0 0 12px; }
+  p { color: var(--muted); margin: 6px 0 14px; line-height: 1.5; }
+  button { font: inherit; background: var(--accent); color: #241a08; border: 0; border-radius: 8px; padding: 10px 16px; font-weight: 700; cursor: pointer; width: 100%; margin-top: 8px; }
+  button:disabled { background: #574b3b; color: #9a8c76; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid #574b3b; }
+  #shop { display: none; }
+  .row { display: flex; justify-content: space-between; font-size: 14px; margin: 4px 0; color: var(--text); }
+  #mobile { display: none; }
+  @media (pointer: coarse) {
+    #mobile { display: block; }
+    #help { display: none; }
+    #joy { position: fixed; left: 24px; bottom: 70px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.2); pointer-events: auto; touch-action: none; }
+    #knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.3); }
+    .mbtn { position: fixed; right: 24px; width: 76px; height: 76px; border-radius: 50%; background: rgba(240,181,74,.75); color: #241a08; font-weight: 800; display: flex; align-items: center; justify-content: center; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+    #mineBtn { bottom: 80px; }
+    #shopBtn { bottom: 170px; width: 56px; height: 56px; right: 34px; font-size: 13px; background: rgba(255,255,255,.25); color: #fff; }
+  }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="target"><span id="tName"></span><div class="bar"><div class="fill" id="tFill"></div></div></div>
+  <div id="stats" class="panel"></div>
+  <div id="inv"></div>
+  <div id="toast"></div>
+  <div id="help" class="panel">WASD 이동 · 마우스 시점<br>클릭(누르고 있기) 채굴 · Space 점프<br>B 상점 · Esc 일시정지</div>
+  <div id="mobile">
+    <div id="joy"><div id="knob"></div></div>
+    <div class="mbtn" id="mineBtn">캐기</div>
+    <div class="mbtn" id="shopBtn">상점</div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="card">
+    <h1>⛏️ 돌 캐기 3D</h1>
+    <p>채석장의 바위를 곡괭이로 깨서 광석을 모으세요.<br>상점에서 광석을 팔고 곡괭이를 강화하면 더 단단하고 값진 광석을 캘 수 있습니다.</p>
+    <button id="startBtn">시작하기</button>
+    <button id="resetBtn" class="ghost">저장 초기화</button>
+  </div>
+</div>
+
+<div id="shop">
+  <div class="card">
+    <h2>🏪 상점</h2>
+    <div id="shopBody"></div>
+    <button id="sellBtn">광석 모두 팔기</button>
+    <button id="upPower">곡괭이 강화</button>
+    <button id="upSpeed">휘두르기 속도 강화</button>
+    <button id="closeShop" class="ghost">닫기 (B)</button>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ---------- 데이터 ----------
+const ORES = [
+  { id: 'stone',   name: '돌',       color: 0x8a8580, hp: 3,   value: 1,   tier: 0, weight: 50, emissive: 0x000000 },
+  { id: 'coal',    name: '석탄',     color: 0x2b2b2e, hp: 5,   value: 4,   tier: 0, weight: 24, emissive: 0x000000 },
+  { id: 'copper',  name: '구리',     color: 0xc4703a, hp: 8,   value: 10,  tier: 1, weight: 14, emissive: 0x301000 },
+  { id: 'iron',    name: '철',       color: 0xd8b8a0, hp: 14,  value: 25,  tier: 2, weight: 9,  emissive: 0x100800 },
+  { id: 'gold',    name: '금',       color: 0xffc933, hp: 22,  value: 70,  tier: 3, weight: 5,  emissive: 0x553300 },
+  { id: 'emerald', name: '에메랄드', color: 0x2ee07a, hp: 32,  value: 160, tier: 4, weight: 3,  emissive: 0x0a4020 },
+  { id: 'diamond', name: '다이아몬드', color: 0x7ff3ff, hp: 50, value: 400, tier: 5, weight: 1.5, emissive: 0x115566 },
+];
+const PICK_NAMES = ['나무', '돌', '구리', '철', '금', '다이아'];
+const PICK_COLORS = [0x8b5a2b, 0x8a8580, 0xc4703a, 0xd8d8d8, 0xffc933, 0x7ff3ff];
+
+const state = {
+  money: 0,
+  power: 0,   // 곡괭이 등급 (0~5)
+  speed: 0,   // 속도 등급
+  inv: Object.fromEntries(ORES.map(o => [o.id, 0])),
+  total: 0,
+};
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem('rockMiner3d') || 'null');
+    if (s) { Object.assign(state, s); state.inv = { ...Object.fromEntries(ORES.map(o => [o.id, 0])), ...s.inv }; }
+  } catch (e) {}
+}
+function save() { try { localStorage.setItem('rockMiner3d', JSON.stringify(state)); } catch (e) {} }
+load();
+
+const powerCost = () => Math.round(30 * Math.pow(3.2, state.power));
+const speedCost = () => Math.round(20 * Math.pow(2.4, state.speed));
+const damage = () => 1 + state.power * 1.6;
+const swingTime = () => Math.max(0.16, 0.5 * Math.pow(0.85, state.speed));
+
+// ---------- 렌더러/씬 ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9cc3d9);
+scene.fog = new THREE.Fog(0x9cc3d9, 30, 85);
+
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 200);
+scene.add(camera);
+
+scene.add(new THREE.HemisphereLight(0xdfefff, 0x5a4630, 0.9));
+const sun = new THREE.DirectionalLight(0xfff1d6, 1.6);
+sun.position.set(25, 40, 15);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 120 });
+scene.add(sun);
+
+// ---------- 지형 (채석장 분지) ----------
+const ARENA = 38;
+function groundHeight(x, z) {
+  const r = Math.hypot(x, z);
+  const bowl = r > 26 ? (r - 26) * (r - 26) * 0.12 : 0;   // 가장자리 언덕
+  const pit = r < 9 ? -(9 - r) * 0.35 : 0;                // 중앙 구덩이
+  return bowl + pit + Math.sin(x * 0.25) * Math.cos(z * 0.21) * 0.35;
+}
+{
+  const geo = new THREE.PlaneGeometry(ARENA * 2.4, ARENA * 2.4, 120, 120);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  const colors = [];
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i);
+    const y = groundHeight(x, z);
+    pos.setY(i, y);
+    const r = Math.hypot(x, z);
+    if (r > 30) c.setHex(0x6f8f4a).lerp(new THREE.Color(0x8a7a60), Math.random() * 0.3);
+    else c.setHex(0x9a8468).lerp(new THREE.Color(0x7a664e), Math.random() * 0.5);
+    if (r < 9) c.lerp(new THREE.Color(0x5a4a3c), 0.5);
+    colors.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
+  ground.receiveShadow = true;
+  scene.add(ground);
+}
+
+// 장식: 나무 & 상점 오두막
+function addTree(x, z) {
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 1.6, 6), new THREE.MeshStandardMaterial({ color: 0x6b4a2b, flatShading: true }));
+  trunk.position.y = 0.8;
+  const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.2, 2.8, 7), new THREE.MeshStandardMaterial({ color: 0x3f7a3a, flatShading: true }));
+  leaves.position.y = 2.8;
+  g.add(trunk, leaves);
+  g.traverse(m => { m.castShadow = true; });
+  g.position.set(x, groundHeight(x, z), z);
+  g.scale.setScalar(0.8 + Math.random() * 0.7);
+  scene.add(g);
+}
+for (let i = 0; i < 46; i++) {
+  const a = Math.random() * Math.PI * 2, r = 33 + Math.random() * 12;
+  addTree(Math.cos(a) * r, Math.sin(a) * r);
+}
+const SHOP_POS = new THREE.Vector3(0, 0, 20);
+{
+  const g = new THREE.Group();
+  const wood = new THREE.MeshStandardMaterial({ color: 0x8b6239, flatShading: true });
+  const base = new THREE.Mesh(new THREE.BoxGeometry(4, 2.4, 3), wood); base.position.y = 1.2;
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(3.3, 1.6, 4), new THREE.MeshStandardMaterial({ color: 0xa83b2c, flatShading: true }));
+  roof.position.y = 3.2; roof.rotation.y = Math.PI / 4;
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(2, 0.6, 0.1), new THREE.MeshStandardMaterial({ color: 0xf0b54a }));
+  sign.position.set(0, 2.0, -1.56);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.6, 0.1), new THREE.MeshStandardMaterial({ color: 0x4a3018 }));
+  door.position.set(0, 0.8, -1.55);
+  g.add(base, roof, sign, door);
+  g.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+  g.position.set(SHOP_POS.x, groundHeight(SHOP_POS.x, SHOP_POS.z), SHOP_POS.z);
+  scene.add(g);
+}
+
+// ---------- 바위 ----------
+const rocks = [];
+const rockGroup = new THREE.Group();
+scene.add(rockGroup);
+
+function pickOre(r) {
+  // 중앙 구덩이에 가까울수록 희귀 광석 확률 증가
+  const bonus = 1 + Math.max(0, (14 - r)) * 0.25;
+  const weights = ORES.map((o, i) => o.weight * (i >= 3 ? bonus : 1));
+  let t = Math.random() * weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < ORES.length; i++) { t -= weights[i]; if (t <= 0) return ORES[i]; }
+  return ORES[0];
+}
+
+function makeRockGeometry(size) {
+  const geo = new THREE.IcosahedronGeometry(size, 1);
+  const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
+  const seed = Math.random() * 100;
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const n = 1 + 0.22 * Math.sin(v.x * 3 + seed) * Math.cos(v.z * 2.7 + seed) + 0.08 * Math.sin(v.y * 5 + seed * 2);
+    v.multiplyScalar(n);
+    v.y *= 0.75;
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8a8580, roughness: 0.95, flatShading: true });
+const crystalGeo = new THREE.OctahedronGeometry(0.22, 0);
+
+function spawnRock() {
+  let x, z, tries = 0;
+  do {
+    const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 25;
+    x = Math.cos(a) * r; z = Math.sin(a) * r; tries++;
+  } while (tries < 30 && (rocks.some(k => Math.hypot(k.mesh.position.x - x, k.mesh.position.z - z) < 2.6) || Math.hypot(x - SHOP_POS.x, z - SHOP_POS.z) < 5));
+  const r = Math.hypot(x, z);
+  const ore = pickOre(r);
+  const size = 0.7 + Math.random() * 0.5 + ore.tier * 0.08;
+  const mesh = new THREE.Mesh(makeRockGeometry(size), ore.id === 'stone' ? stoneMat : stoneMat.clone());
+  if (ore.id !== 'stone') mesh.material.color.setHex(ore.id === 'coal' ? 0x5c5955 : 0x7d7873);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  mesh.position.set(x, groundHeight(x, z) + size * 0.35, z);
+  mesh.rotation.y = Math.random() * Math.PI * 2;
+
+  // 광석 결정 박기
+  if (ore.id !== 'stone') {
+    const mat = new THREE.MeshStandardMaterial({ color: ore.color, emissive: ore.emissive, roughness: 0.35, metalness: ore.tier >= 2 ? 0.5 : 0.1, flatShading: true });
+    const count = 4 + Math.floor(Math.random() * 4);
+    const dir = new THREE.Vector3();
+    for (let i = 0; i < count; i++) {
+      dir.set(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5).normalize();
+      const c = new THREE.Mesh(crystalGeo, mat);
+      c.position.copy(dir).multiplyScalar(size * 0.82);
+      c.position.y *= 0.75;
+      c.scale.setScalar(0.6 + Math.random() * 0.8);
+      c.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+      c.castShadow = true;
+      mesh.add(c);
+    }
+  }
+  const rock = { mesh, ore, hp: ore.hp, maxHp: ore.hp, shake: 0, base: mesh.position.clone(), size };
+  mesh.userData.rock = rock;
+  rockGroup.add(mesh);
+  rocks.push(rock);
+  return rock;
+}
+const MAX_ROCKS = 55;
+for (let i = 0; i < MAX_ROCKS; i++) spawnRock();
+
+// ---------- 파티클 ----------
+const particles = [];
+const partGeo = new THREE.BoxGeometry(0.09, 0.09, 0.09);
+function burst(pos, color, n, speed = 3) {
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(partGeo, new THREE.MeshStandardMaterial({ color, flatShading: true }));
+    m.position.copy(pos);
+    const v = new THREE.Vector3((Math.random() - 0.5) * speed, Math.random() * speed * 0.9 + 1, (Math.random() - 0.5) * speed);
+    m.scale.setScalar(0.6 + Math.random() * 1.4);
+    scene.add(m);
+    particles.push({ m, v, life: 0.7 + Math.random() * 0.6 });
+  }
+}
+
+// 수집 아이템 (깨진 바위에서 튀어나와 플레이어에게 날아옴)
+const pickups = [];
+function dropOre(rock) {
+  const n = rock.ore.id === 'stone' ? 1 : 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), new THREE.MeshStandardMaterial({ color: rock.ore.color, emissive: rock.ore.emissive, flatShading: true }));
+    m.position.copy(rock.mesh.position);
+    scene.add(m);
+    pickups.push({ m, ore: rock.ore, v: new THREE.Vector3((Math.random() - 0.5) * 3, 4 + Math.random() * 2, (Math.random() - 0.5) * 3), t: 0 });
+  }
+}
+
+// ---------- 곡괭이 (1인칭 뷰모델) ----------
+const pick = new THREE.Group();
+const handle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.05), new THREE.MeshStandardMaterial({ color: 0x6b4423 }));
+handle.position.y = 0.3;
+const headMat = new THREE.MeshStandardMaterial({ color: PICK_COLORS[state.power], metalness: 0.4, roughness: 0.4, flatShading: true });
+const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.07, 0.07), headMat);
+head.position.y = 0.58;
+const tipL = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.14, 4), headMat);
+tipL.rotation.z = Math.PI / 2; tipL.position.set(-0.31, 0.58, 0);
+const tipR = tipL.clone(); tipR.rotation.z = -Math.PI / 2; tipR.position.x = 0.31;
+pick.add(handle, head, tipL, tipR);
+const pickHolder = new THREE.Group();
+pickHolder.position.set(0.42, -0.45, -0.75);
+pickHolder.scale.setScalar(0.8);
+pickHolder.add(pick);
+pick.rotation.set(-0.3, -0.4, 0.15);
+camera.add(pickHolder);
+
+// ---------- 사운드 ----------
+let actx = null;
+function sound(freq = 220, dur = 0.08, type = 'noise', vol = 0.25) {
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    const g = actx.createGain();
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    g.connect(actx.destination);
+    if (type === 'noise') {
+      const buf = actx.createBuffer(1, actx.sampleRate * dur, actx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+      const src = actx.createBufferSource(); src.buffer = buf;
+      const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq * 6; f.Q.value = 0.8;
+      src.connect(f); f.connect(g); src.start();
+    } else {
+      const o = actx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, actx.currentTime);
+      o.frequency.exponentialRampToValueAtTime(freq * 1.6, actx.currentTime + dur);
+      o.connect(g); o.start(); o.stop(actx.currentTime + dur);
+    }
+  } catch (e) {}
+}
+
+// ---------- 플레이어 & 입력 ----------
+const player = { pos: new THREE.Vector3(0, 0, 14), vel: new THREE.Vector3(), yaw: 0, pitch: -0.15, onGround: false };
+const EYE = 1.6;
+const keys = {};
+let mouseDown = false, playing = false, shopOpen = false;
+const isTouch = matchMedia('(pointer: coarse)').matches;
+const joy = { x: 0, y: 0 };
+
+const overlay = document.getElementById('overlay');
+const shopEl = document.getElementById('shop');
+
+function startPlay() {
+  overlay.style.display = 'none';
+  playing = true;
+  if (!isTouch) renderer.domElement.requestPointerLock?.();
+  sound(400, 0.05, 'sine', 0.05);
+}
+document.getElementById('startBtn').onclick = startPlay;
+document.getElementById('resetBtn').onclick = () => {
+  if (!confirm('저장된 진행 상황을 모두 지울까요?')) return;
+  try { localStorage.removeItem('rockMiner3d'); } catch (e) {}
+  location.reload();
+};
+renderer.domElement.addEventListener('click', () => {
+  if (playing && !shopOpen && !isTouch && document.pointerLockElement !== renderer.domElement) renderer.domElement.requestPointerLock?.();
+});
+document.addEventListener('pointerlockchange', () => {
+  if (!document.pointerLockElement && playing && !shopOpen && !isTouch) { playing = false; overlay.style.display = 'flex'; document.getElementById('startBtn').textContent = '계속하기'; }
+});
+document.addEventListener('mousemove', e => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  if (Math.abs(e.movementX) > 250 || Math.abs(e.movementY) > 250) return; // 포인터 잠금 직후 튀는 값 무시
+  player.yaw -= e.movementX * 0.0022;
+  player.pitch = THREE.MathUtils.clamp(player.pitch - e.movementY * 0.0022, -1.5, 1.5);
+});
+document.addEventListener('mousedown', e => { if (e.button === 0) mouseDown = true; });
+document.addEventListener('mouseup', e => { if (e.button === 0) mouseDown = false; });
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyB' && playing) toggleShop();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// 터치 조작
+if (isTouch) {
+  const joyEl = document.getElementById('joy'), knob = document.getElementById('knob');
+  let joyId = null;
+  joyEl.addEventListener('touchstart', e => { joyId = e.changedTouches[0].identifier; e.preventDefault(); }, { passive: false });
+  const joyMove = e => {
+    for (const t of e.changedTouches) if (t.identifier === joyId) {
+      const r = joyEl.getBoundingClientRect();
+      let dx = (t.clientX - r.left - r.width / 2) / 50, dy = (t.clientY - r.top - r.height / 2) / 50;
+      const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
+      joy.x = dx; joy.y = dy;
+      knob.style.transform = `translate(${dx * 35}px, ${dy * 35}px)`;
+    }
+  };
+  const joyEnd = e => { for (const t of e.changedTouches) if (t.identifier === joyId) { joyId = null; joy.x = joy.y = 0; knob.style.transform = ''; } };
+  joyEl.addEventListener('touchmove', joyMove, { passive: true });
+  joyEl.addEventListener('touchend', joyEnd); joyEl.addEventListener('touchcancel', joyEnd);
+
+  const mineBtn = document.getElementById('mineBtn');
+  mineBtn.addEventListener('touchstart', e => { mouseDown = true; e.preventDefault(); }, { passive: false });
+  mineBtn.addEventListener('touchend', () => { mouseDown = false; });
+  document.getElementById('shopBtn').addEventListener('touchstart', e => { e.preventDefault(); if (playing) toggleShop(); }, { passive: false });
+
+  // 화면 드래그로 시점 회전
+  let lookId = null, lx = 0, ly = 0;
+  renderer.domElement.addEventListener('touchstart', e => { const t = e.changedTouches[0]; lookId = t.identifier; lx = t.clientX; ly = t.clientY; }, { passive: true });
+  renderer.domElement.addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) if (t.identifier === lookId) {
+      player.yaw -= (t.clientX - lx) * 0.005;
+      player.pitch = THREE.MathUtils.clamp(player.pitch - (t.clientY - ly) * 0.005, -1.5, 1.5);
+      lx = t.clientX; ly = t.clientY;
+    }
+  }, { passive: true });
+}
+
+// ---------- 상점 ----------
+function toggleShop() {
+  shopOpen = !shopOpen;
+  shopEl.style.display = shopOpen ? 'flex' : 'none';
+  mouseDown = false;
+  if (shopOpen) { if (!isTouch) document.exitPointerLock?.(); renderShop(); }
+  else if (!isTouch) renderer.domElement.requestPointerLock?.();
+}
+function inventoryValue() { return ORES.reduce((s, o) => s + state.inv[o.id] * o.value, 0); }
+function renderShop() {
+  const near = player.pos.distanceTo(SHOP_POS) < 9;
+  const body = document.getElementById('shopBody');
+  body.innerHTML = `
+    <div class="row"><span>보유 골드</span><b style="color:var(--accent)">${state.money} G</b></div>
+    <div class="row"><span>가방 속 광석 가치</span><span>${inventoryValue()} G</span></div>
+    <div class="row"><span>곡괭이</span><span>${PICK_NAMES[state.power]} (공격력 ${damage().toFixed(1)})</span></div>
+    <div class="row"><span>휘두르기 간격</span><span>${swingTime().toFixed(2)}초</span></div>
+    ${near ? '' : '<p style="color:var(--bad)">⚠ 광석을 팔려면 빨간 지붕 상점 가까이 가야 해요. (강화는 어디서나 가능)</p>'}`;
+  const sell = document.getElementById('sellBtn');
+  sell.disabled = !near || inventoryValue() === 0;
+  sell.textContent = `광석 모두 팔기 (+${inventoryValue()} G)`;
+  const up = document.getElementById('upPower');
+  if (state.power >= PICK_NAMES.length - 1) { up.disabled = true; up.textContent = '곡괭이 최대 등급'; }
+  else { up.disabled = state.money < powerCost(); up.textContent = `곡괭이 → ${PICK_NAMES[state.power + 1]} (${powerCost()} G)`; }
+  const sp = document.getElementById('upSpeed');
+  if (swingTime() <= 0.16) { sp.disabled = true; sp.textContent = '속도 최대'; }
+  else { sp.disabled = state.money < speedCost(); sp.textContent = `휘두르기 속도 Lv.${state.speed + 1} (${speedCost()} G)`; }
+}
+document.getElementById('sellBtn').onclick = () => {
+  const v = inventoryValue();
+  state.money += v;
+  for (const o of ORES) state.inv[o.id] = 0;
+  sound(880, 0.25, 'triangle', 0.15);
+  toast(`+${v} G 판매!`);
+  save(); renderShop(); updateHud();
+};
+document.getElementById('upPower').onclick = () => {
+  const c = powerCost(); if (state.money < c) return;
+  state.money -= c; state.power++;
+  headMat.color.setHex(PICK_COLORS[state.power]);
+  sound(520, 0.3, 'square', 0.08);
+  toast(`${PICK_NAMES[state.power]} 곡괭이 획득!`);
+  save(); renderShop(); updateHud();
+};
+document.getElementById('upSpeed').onclick = () => {
+  const c = speedCost(); if (state.money < c) return;
+  state.money -= c; state.speed++;
+  sound(660, 0.2, 'square', 0.08);
+  save(); renderShop(); updateHud();
+};
+document.getElementById('closeShop').onclick = toggleShop;
+
+// ---------- HUD ----------
+const statsEl = document.getElementById('stats'), invEl = document.getElementById('inv');
+const targetEl = document.getElementById('target'), tName = document.getElementById('tName'), tFill = document.getElementById('tFill');
+const toastEl = document.getElementById('toast');
+let toastTimer;
+function toast(msg, color = '#fff') {
+  toastEl.textContent = msg; toastEl.style.color = color; toastEl.style.opacity = 1;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.style.opacity = 0, 1300);
+}
+function updateHud() {
+  statsEl.innerHTML = `💰 <b>${state.money} G</b><br>⛏️ ${PICK_NAMES[state.power]} 곡괭이<br>🪨 캔 바위: ${state.total}`;
+  invEl.innerHTML = ORES.filter(o => state.inv[o.id] > 0).map(o =>
+    `<div class="slot"><span class="dot" style="background:#${o.color.toString(16).padStart(6, '0')}"></span>${o.name} ${state.inv[o.id]}</div>`).join('')
+    || '<div class="slot" style="color:var(--muted)">가방이 비어 있어요</div>';
+}
+updateHud();
+
+// ---------- 채굴 ----------
+const ray = new THREE.Raycaster();
+ray.far = 4.2;
+let swingT = 0;       // 0이면 대기, >0이면 휘두르는 중
+let hitDone = false;
+let target = null;
+const center = new THREE.Vector2(0, 0);
+
+function findTarget() {
+  ray.setFromCamera(center, camera);
+  const hits = ray.intersectObjects(rockGroup.children, true);
+  if (!hits.length) return null;
+  let o = hits[0].object;
+  while (o && !o.userData.rock) o = o.parent;
+  return o ? { rock: o.userData.rock, point: hits[0].point } : null;
+}
+
+function hitRock(t) {
+  const rock = t.rock;
+  if (rock.ore.tier > state.power) {
+    toast(`${PICK_NAMES[rock.ore.tier]} 곡괭이 이상이 필요해요!`, '#e2675a');
+    sound(120, 0.1, 'noise', 0.15);
+    burst(t.point, 0x777777, 3, 1.5);
+    rock.shake = 0.15;
+    return;
+  }
+  rock.hp -= damage();
+  rock.shake = 0.25;
+  burst(t.point, rock.ore.id === 'stone' ? 0x8a8580 : rock.ore.color, 7);
+  sound(140 + rock.ore.tier * 30, 0.09, 'noise', 0.3);
+  if (rock.hp <= 0) breakRock(rock);
+}
+
+function breakRock(rock) {
+  burst(rock.mesh.position, 0x8a8580, 22, 5);
+  if (rock.ore.id !== 'stone') burst(rock.mesh.position, rock.ore.color, 14, 4);
+  dropOre(rock);
+  sound(90, 0.3, 'noise', 0.45);
+  rockGroup.remove(rock.mesh);
+  rock.mesh.geometry.dispose();
+  rocks.splice(rocks.indexOf(rock), 1);
+  state.total++;
+  if (rock.ore.tier >= 4) toast(`✨ ${rock.ore.name} 발견!`, '#' + rock.ore.color.toString(16).padStart(6, '0'));
+  setTimeout(() => { if (rocks.length < MAX_ROCKS) { const r = spawnRock(); r.mesh.scale.setScalar(0.01); r.grow = 0; } }, 4000 + Math.random() * 4000);
+  save(); updateHud();
+}
+
+// ---------- 메인 루프 ----------
+const clock = new THREE.Clock();
+const fwd = new THREE.Vector3(), right = new THREE.Vector3();
+let bob = 0;
+
+function update(dt) {
+  // 이동
+  let mx = 0, mz = 0;
+  if (keys.KeyW || keys.ArrowUp) mz += 1;
+  if (keys.KeyS || keys.ArrowDown) mz -= 1;
+  if (keys.KeyA || keys.ArrowLeft) mx -= 1;
+  if (keys.KeyD || keys.ArrowRight) mx += 1;
+  mx += joy.x; mz -= joy.y;
+  const len = Math.hypot(mx, mz); if (len > 1) { mx /= len; mz /= len; }
+  fwd.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  right.set(-fwd.z, 0, fwd.x);
+  const speed = keys.ShiftLeft ? 7 : 4.5;
+  const wish = new THREE.Vector3().addScaledVector(fwd, mz).addScaledVector(right, mx).multiplyScalar(speed);
+  player.vel.x = THREE.MathUtils.lerp(player.vel.x, wish.x, Math.min(1, dt * 12));
+  player.vel.z = THREE.MathUtils.lerp(player.vel.z, wish.z, Math.min(1, dt * 12));
+  player.vel.y -= 20 * dt;
+  if (keys.Space && player.onGround) { player.vel.y = 7; player.onGround = false; }
+  player.pos.addScaledVector(player.vel, dt);
+
+  // 바위 충돌
+  for (const r of rocks) {
+    const dx = player.pos.x - r.mesh.position.x, dz = player.pos.z - r.mesh.position.z;
+    const d = Math.hypot(dx, dz), min = r.size * 0.95 + 0.35;
+    if (d < min && player.pos.y < r.mesh.position.y + r.size * 0.6) {
+      player.pos.x = r.mesh.position.x + dx / (d || 1) * min;
+      player.pos.z = r.mesh.position.z + dz / (d || 1) * min;
+    }
+  }
+  // 상점 충돌 (상자)
+  {
+    const lx = player.pos.x - SHOP_POS.x, lz = player.pos.z - SHOP_POS.z;
+    const hx = 2.35, hz = 1.85;
+    if (Math.abs(lx) < hx && Math.abs(lz) < hz) {
+      if (hx - Math.abs(lx) < hz - Math.abs(lz)) player.pos.x = SHOP_POS.x + Math.sign(lx || 1) * hx;
+      else player.pos.z = SHOP_POS.z + Math.sign(lz || 1) * hz;
+    }
+  }
+  // 경계
+  const pr = Math.hypot(player.pos.x, player.pos.z);
+  if (pr > ARENA) { player.pos.x *= ARENA / pr; player.pos.z *= ARENA / pr; }
+  const gh = groundHeight(player.pos.x, player.pos.z);
+  if (player.pos.y <= gh) { player.pos.y = gh; player.vel.y = 0; player.onGround = true; }
+
+  const moving = player.onGround && Math.hypot(player.vel.x, player.vel.z) > 0.5;
+  bob += moving ? dt * 9 : 0;
+  camera.position.set(player.pos.x, player.pos.y + EYE + (moving ? Math.sin(bob) * 0.05 : 0), player.pos.z);
+  camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
+
+  // 조준 대상
+  target = findTarget();
+  if (target) {
+    const r = target.rock;
+    const locked = r.ore.tier > state.power;
+    targetEl.style.display = 'block';
+    targetEl.classList.toggle('locked', locked);
+    tName.textContent = locked ? `${r.ore.name} 🔒 (${PICK_NAMES[r.ore.tier]} 곡괭이 필요)` : `${r.ore.name} · ${r.ore.value}G`;
+    tFill.style.width = `${Math.max(0, r.hp / r.maxHp) * 100}%`;
+  } else targetEl.style.display = 'none';
+
+  // 휘두르기
+  const st = swingTime();
+  if (swingT === 0 && mouseDown && !shopOpen) { swingT = 0.0001; hitDone = false; }
+  if (swingT > 0) {
+    swingT += dt / st;
+    if (!hitDone && swingT >= 0.45) { hitDone = true; const t = findTarget(); if (t) hitRock(t); else sound(600, 0.05, 'noise', 0.05); }
+    if (swingT >= 1) swingT = 0;
+  }
+  const s = swingT > 0 ? swingT : 0;
+  const arc = s < 0.45 ? -(s / 0.45) * 0.9 : -0.9 + ((s - 0.45) / 0.55) * 0.9; // 뒤로 젖혔다 내려치기
+  const strike = s < 0.45 ? 0 : Math.sin(((s - 0.45) / 0.55) * Math.PI) * 1.4;
+  pick.rotation.x = -0.3 + arc * -0.8 - strike;
+  pickHolder.position.y = -0.42 + (moving ? Math.abs(Math.sin(bob)) * 0.02 : 0);
+
+  // 바위 흔들림 & 성장
+  for (const r of rocks) {
+    if (r.shake > 0) {
+      r.shake -= dt;
+      r.mesh.position.set(r.base.x + (Math.random() - 0.5) * 0.08, r.base.y, r.base.z + (Math.random() - 0.5) * 0.08);
+      if (r.shake <= 0) r.mesh.position.copy(r.base);
+    }
+    if (r.grow !== undefined) {
+      r.grow = Math.min(1, r.grow + dt * 1.5);
+      r.mesh.scale.setScalar(THREE.MathUtils.smoothstep(r.grow, 0, 1) || 0.01);
+      if (r.grow >= 1) delete r.grow;
+    }
+  }
+
+  // 파티클
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.v.y -= 14 * dt; p.m.position.addScaledVector(p.v, dt); p.life -= dt;
+    const g = groundHeight(p.m.position.x, p.m.position.z);
+    if (p.m.position.y < g) { p.m.position.y = g; p.v.multiplyScalar(0.4); p.v.y = Math.abs(p.v.y) * 0.3; }
+    if (p.life <= 0) { scene.remove(p.m); p.m.material.dispose(); particles.splice(i, 1); }
+  }
+
+  // 수집물
+  const headPos = new THREE.Vector3(player.pos.x, player.pos.y + 1.0, player.pos.z);
+  for (let i = pickups.length - 1; i >= 0; i--) {
+    const p = pickups[i];
+    p.t += dt; p.m.rotation.y += dt * 4;
+    if (p.t < 0.5) {
+      p.v.y -= 14 * dt; p.m.position.addScaledVector(p.v, dt);
+      const g = groundHeight(p.m.position.x, p.m.position.z) + 0.15;
+      if (p.m.position.y < g) { p.m.position.y = g; p.v.set(0, 0, 0); }
+    } else {
+      p.m.position.lerp(headPos, Math.min(1, dt * 8));
+      if (p.m.position.distanceTo(headPos) < 0.4) {
+        state.inv[p.ore.id]++;
+        scene.remove(p.m); p.m.geometry.dispose(); p.m.material.dispose();
+        pickups.splice(i, 1);
+        sound(700 + p.ore.tier * 120, 0.08, 'sine', 0.08);
+        updateHud(); save();
+      }
+    }
+  }
+}
+
+function loop() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (playing && !shopOpen) update(dt);
+  else { camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z); camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ'); }
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+loop();
+window.__rockGame = { player, rocks, state }; // 디버그용
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
