@@ -27,7 +27,9 @@
   #target .fill { height: 100%; background: var(--accent); width: 100%; }
   #target.locked .fill { background: var(--bad); }
   .panel { background: var(--panel); border-radius: 10px; padding: 10px 12px; }
-  #stats { position: absolute; top: 12px; left: 12px; font-size: 14px; line-height: 1.6; min-width: 170px; }
+  #topLeft { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; max-width: calc(100% - 24px); }
+  .btnRow { display: flex; gap: 6px; flex-wrap: wrap; }
+  #stats { font-size: 14px; line-height: 1.6; min-width: 170px; }
   #stats b { color: var(--accent); }
   #inv { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 24px); }
   .slot { background: var(--panel); border-radius: 8px; padding: 6px 9px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
@@ -46,10 +48,18 @@
   #shop { display: none; }
   .row { display: flex; justify-content: space-between; font-size: 14px; margin: 4px 0; color: var(--text); }
   #mobile { display: none; }
-  #autoBtn { position: absolute; top: 108px; left: 12px; pointer-events: auto; width: auto; margin: 0; padding: 8px 12px;
+  #autoBtn { pointer-events: auto; width: auto; margin: 0; padding: 8px 12px;
     font-size: 13px; background: var(--panel); color: var(--text); border: 1px solid #574b3b; }
   #autoBtn.on { background: #3a7bd5; border-color: #6aa3f0; color: #fff; }
-  #autoStatus { position: absolute; top: 150px; left: 12px; font-size: 12px; color: #a9cdf8; text-shadow: 0 1px 2px #000; }
+  #codeBtn { pointer-events: auto; width: auto; margin: 0; padding: 8px 12px;
+    font-size: 13px; background: var(--panel); color: var(--text); border: 1px solid #574b3b; }
+  #codeBox { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 16px; }
+  #codeBox[hidden] { display: none; }
+  #codeBox form { background: #241f1a; border: 1px solid #3d342a; border-radius: 14px; padding: 20px; width: 100%; max-width: 340px; text-align: center; }
+  #codeInput { width: 100%; font: inherit; font-size: 18px; padding: 10px 12px; border-radius: 8px; border: 1px solid #574b3b; background: #16130f; color: var(--text); text-align: center; }
+  #codeInput:focus { outline: 2px solid var(--accent); }
+  #codeMsg { min-height: 1.4em; font-size: 13px; margin: 8px 0 0; }
+  #autoStatus { font-size: 12px; color: #a9cdf8; text-shadow: 0 1px 2px #000; }
   @media (pointer: coarse) {
     #mobile { display: block; }
     #help { display: none; }
@@ -57,8 +67,6 @@
     #knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.3); }
     .mbtn { position: fixed; right: 24px; width: 76px; height: 76px; border-radius: 50%; background: rgba(240,181,74,.75); color: #241a08; font-weight: 800; display: flex; align-items: center; justify-content: center; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
     #mineBtn { bottom: 80px; }
-    #autoBtn { top: auto; bottom: 250px; left: auto; right: 24px; }
-    #autoStatus { top: 108px; }
     #shopBtn { bottom: 170px; width: 56px; height: 56px; right: 34px; font-size: 13px; background: rgba(255,255,255,.25); color: #fff; }
   }
 </style>
@@ -68,11 +76,16 @@
 <div id="hud">
   <div id="crosshair"></div>
   <div id="target"><span id="tName"></span><div class="bar"><div class="fill" id="tFill"></div></div></div>
-  <div id="stats" class="panel"></div>
   <div id="inv"></div>
   <div id="toast"></div>
-  <button id="autoBtn" type="button">🤖 자율 모드 OFF (T)</button>
-  <div id="autoStatus"></div>
+  <div id="topLeft">
+    <div id="stats" class="panel"></div>
+    <div class="btnRow">
+      <button id="autoBtn" type="button">🤖 자율 모드 OFF (T)</button>
+      <button id="codeBtn" type="button">🔑 코드 (Enter)</button>
+    </div>
+    <div id="autoStatus"></div>
+  </div>
   <div id="help" class="panel">WASD 이동 · 마우스 시점<br>클릭(누르고 있기) 채굴 · 드래그로도 시점 회전<br>Space 점프<br>B 상점 · T 자율 모드 · Esc 일시정지</div>
   <div id="mobile">
     <div id="joy"><div id="knob"></div></div>
@@ -88,6 +101,16 @@
     <button id="startBtn">시작하기</button>
     <button id="resetBtn" class="ghost">저장 초기화</button>
   </div>
+</div>
+
+<div id="codeBox" hidden>
+  <form id="codeForm" autocomplete="off">
+    <h2>🔑 코드 입력</h2>
+    <input id="codeInput" type="text" placeholder="코드를 입력하세요" maxlength="20" />
+    <p id="codeMsg"></p>
+    <button type="submit">확인</button>
+    <button type="button" id="codeClose" class="ghost">닫기 (Esc)</button>
+  </form>
 </div>
 
 <div id="shop">
@@ -370,7 +393,8 @@ function sound(freq = 220, dur = 0.08, type = 'noise', vol = 0.25) {
 const player = { pos: new THREE.Vector3(0, 0, 14), vel: new THREE.Vector3(), yaw: 0, pitch: -0.15, onGround: false };
 const EYE = 1.6;
 const keys = {};
-let mouseDown = false, playing = false, shopOpen = false;
+let mouseDown = false, playing = false, shopOpen = false, codeOpen = false;
+const menuOpen = () => shopOpen || codeOpen;
 const isTouch = matchMedia('(pointer: coarse)').matches;
 const joy = { x: 0, y: 0 };
 
@@ -411,11 +435,11 @@ resetBtn.onclick = () => {
   location.reload();
 };
 renderer.domElement.addEventListener('click', () => {
-  if (playing && !shopOpen && !isLocked()) tryLock();
+  if (playing && !menuOpen() && !isLocked()) tryLock();
 });
 document.addEventListener('pointerlockchange', () => {
   if (isLocked()) { wasLocked = true; return; }
-  if (wasLocked && playing && !shopOpen && !isTouch) pause();
+  if (wasLocked && playing && !menuOpen() && !isTouch) pause();
   wasLocked = false;
 });
 document.addEventListener('pointerlockerror', () => {});
@@ -424,7 +448,7 @@ renderer.domElement.addEventListener('mousedown', e => { dragging = true; if (e.
 document.addEventListener('mouseup', e => { dragging = false; if (e.button === 0) mouseDown = false; });
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('mousemove', e => {
-  if (!playing || shopOpen) return;
+  if (!playing || menuOpen()) return;
   if (!isLocked() && !dragging) return;           // 잠금이 없으면 누른 채 드래그할 때만 회전
   if (Math.abs(e.movementX) > 250 || Math.abs(e.movementY) > 250) return; // 튀는 값 무시
   const k = isLocked() ? 0.0022 : 0.005;
@@ -433,11 +457,13 @@ document.addEventListener('mousemove', e => {
 });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; dragging = false; });
 document.addEventListener('keydown', e => {
+  if (codeOpen) { if (e.code === 'Escape') closeCode(); return; } // 코드 입력 중엔 게임 키 무시
+  if ((e.code === 'Enter' || e.code === 'NumpadEnter') && playing && !shopOpen) { e.preventDefault(); openCode(); return; }
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-  if (e.code === 'Escape' && playing && !shopOpen && !isLocked()) { pause(); return; }
+  if (e.code === 'Escape' && playing && !menuOpen() && !isLocked()) { pause(); return; }
   if (e.code === 'KeyB' && playing) toggleShop();
-  if (e.code === 'KeyT' && playing && !shopOpen) setAuto(!auto.on);
+  if (e.code === 'KeyT' && playing && !menuOpen()) setAuto(!auto.on);
   if (auto.on && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) setAuto(false);
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -547,7 +573,7 @@ function toast(msg, color = '#fff') {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.style.opacity = 0, 1300);
 }
 function updateHud() {
-  statsEl.innerHTML = `💰 <b>${state.money} G</b><br>⛏️ ${PICK_NAMES[state.power]} 곡괭이<br>🪨 캔 바위: ${state.total}`;
+  statsEl.innerHTML = `💰 <b>${state.money} G</b><br>⛏️ ${PICK_NAMES[state.power]} 곡괭이<br>🪨 캔 바위: ${state.total}${state.turbo ? '<br>🛡️ <b>방탄유리 질주 ON</b>' : ''}`;
   invEl.innerHTML = ORES.filter(o => state.inv[o.id] > 0).map(o =>
     `<div class="slot"><span class="dot" style="background:#${o.color.toString(16).padStart(6, '0')}"></span>${o.name} ${state.inv[o.id]}</div>`).join('')
     || '<div class="slot" style="color:var(--muted)">가방이 비어 있어요</div>';
@@ -601,6 +627,43 @@ function breakRock(rock) {
   save(); updateHud();
 }
 
+// ---------- 치트 코드 ----------
+// '방탄유리'를 입력하면 이동 속도가 크게 빨라짐 (다시 입력하면 꺼짐)
+const TURBO_MULT = 2.6;
+const codeBox = document.getElementById('codeBox'), codeInput = document.getElementById('codeInput'), codeMsg = document.getElementById('codeMsg');
+function openCode() {
+  if (!playing) return;
+  codeOpen = true; mouseDown = false;
+  for (const k in keys) keys[k] = false;
+  if (isLocked()) document.exitPointerLock?.();
+  codeInput.value = ''; codeMsg.textContent = ''; codeMsg.style.color = '';
+  codeBox.hidden = false;
+  setTimeout(() => codeInput.focus(), 0);
+}
+function closeCode() {
+  codeOpen = false; codeBox.hidden = true; codeInput.blur();
+  tryLock();
+}
+document.getElementById('codeForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const code = codeInput.value.replace(/\s+/g, '');
+  if (code === '방탄유리') {
+    state.turbo = !state.turbo;
+    save(); updateHud();
+    sound(state.turbo ? 990 : 330, 0.35, 'triangle', 0.15);
+    toast(state.turbo ? '🛡️ 방탄유리 질주! 이동 속도 UP' : '방탄유리 질주 해제', state.turbo ? '#7ff3ff' : '#fff');
+    closeCode();
+  } else {
+    codeMsg.textContent = '알 수 없는 코드예요.';
+    codeMsg.style.color = 'var(--bad)';
+    codeInput.select();
+  }
+});
+document.getElementById('codeClose').onclick = closeCode;
+const codeBtn = document.getElementById('codeBtn');
+codeBtn.addEventListener('mousedown', e => e.stopPropagation());
+codeBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!shopOpen) openCode(); });
+
 // ---------- 자율 모드 (오토파일럿) ----------
 // 캘 수 있는 바위 중 가까우면서 값진 것을 골라 걸어가 캐고,
 // 가방이 차면 상점에 가서 팔고 강화까지 스스로 합니다.
@@ -616,8 +679,8 @@ function setAuto(on) {
   toast(on ? '🤖 자율 모드 시작' : '자율 모드 종료', on ? '#a9cdf8' : '#fff');
 }
 autoBtn.addEventListener('mousedown', e => e.stopPropagation());
-autoBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!shopOpen) setAuto(!auto.on); });
-autoBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); if (!shopOpen) setAuto(!auto.on); }, { passive: false });
+autoBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!menuOpen()) setAuto(!auto.on); });
+autoBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); if (!menuOpen()) setAuto(!auto.on); }, { passive: false });
 
 const bagCount = () => ORES.reduce((n, o) => n + state.inv[o.id], 0);
 function angleTo(cur, want) { let d = want - cur; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; }
@@ -707,7 +770,7 @@ function update(dt) {
   const len = Math.hypot(mx, mz); if (len > 1) { mx /= len; mz /= len; }
   fwd.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   right.set(-fwd.z, 0, fwd.x);
-  const speed = keys.ShiftLeft ? 7 : 4.5;
+  const speed = (keys.ShiftLeft ? 7 : 4.5) * (state.turbo ? TURBO_MULT : 1);
   const wish = new THREE.Vector3().addScaledVector(fwd, mz).addScaledVector(right, mx).multiplyScalar(speed);
   player.vel.x = THREE.MathUtils.lerp(player.vel.x, wish.x, Math.min(1, dt * 12));
   player.vel.z = THREE.MathUtils.lerp(player.vel.z, wish.z, Math.min(1, dt * 12));
@@ -757,7 +820,7 @@ function update(dt) {
 
   // 휘두르기
   const st = swingTime();
-  if (swingT === 0 && (mouseDown || (auto.on && auto.mine)) && !shopOpen) { swingT = 0.0001; hitDone = false; }
+  if (swingT === 0 && (mouseDown || (auto.on && auto.mine)) && !menuOpen()) { swingT = 0.0001; hitDone = false; }
   if (swingT > 0) {
     swingT += dt / st;
     if (!hitDone && swingT >= 0.45) { hitDone = true; const t = findTarget(); if (t) hitRock(t); else sound(600, 0.05, 'noise', 0.05); }
@@ -816,7 +879,7 @@ function update(dt) {
 
 function loop() {
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (playing && !shopOpen) update(dt);
+  if (playing && !menuOpen()) update(dt);
   else { camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z); camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ'); }
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
