@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-<title>돌 캐기 3D</title>
+<title>곡괭이 봉우리</title>
 <style>
   :root {
     --panel: rgba(20, 18, 16, 0.82);
@@ -11,6 +11,7 @@
     --muted: #b9ab90;
     --accent: #f0b54a;
     --bad: #e2675a;
+    --auto: #a9cdf8;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1714; color: var(--text);
@@ -22,21 +23,24 @@
   #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
   #crosshair::after { top: 8px; left: 0; height: 2px; width: 18px; }
   #target { position: absolute; left: 50%; top: calc(50% + 28px); transform: translateX(-50%); text-align: center;
-    font-size: 13px; text-shadow: 0 1px 2px #000; display: none; }
+    font-size: 13px; text-shadow: 0 1px 2px #000; display: none; white-space: nowrap; }
   #target .bar { width: 140px; height: 7px; background: rgba(0,0,0,.5); border-radius: 4px; margin: 4px auto 0; overflow: hidden; }
   #target .fill { height: 100%; background: var(--accent); width: 100%; }
   #target.locked .fill { background: var(--bad); }
   .panel { background: var(--panel); border-radius: 10px; padding: 10px 12px; }
-  #stats { position: absolute; top: 12px; left: 12px; font-size: 14px; line-height: 1.6; min-width: 170px; }
+  #topLeft { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; max-width: calc(100% - 24px); }
+  .btnRow { display: flex; gap: 6px; flex-wrap: wrap; }
+  #stats { font-size: 14px; line-height: 1.6; min-width: 170px; font-variant-numeric: tabular-nums; }
   #stats b { color: var(--accent); }
+  #stats .full { color: var(--bad); font-weight: 700; }
   #inv { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 24px); }
   .slot { background: var(--panel); border-radius: 8px; padding: 6px 9px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
   .dot { width: 12px; height: 12px; border-radius: 3px; }
   #toast { position: absolute; top: 18%; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 700;
     text-shadow: 0 2px 4px #000; opacity: 0; transition: opacity .3s; white-space: nowrap; }
   #help { position: absolute; top: 12px; right: 12px; font-size: 12px; color: var(--muted); line-height: 1.6; text-align: right; }
-  #overlay, #shop { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 16px; }
-  #overlay .card, #shop .card { background: #241f1a; border: 1px solid #3d342a; border-radius: 14px; padding: 22px; max-width: 420px; width: 100%; text-align: center; }
+  #overlay, #shop, #codeBox { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 16px; }
+  .card { background: #241f1a; border: 1px solid #3d342a; border-radius: 14px; padding: 22px; max-width: 420px; width: 100%; text-align: center; max-height: 100%; overflow-y: auto; }
   h1 { margin: 0 0 6px; font-size: 28px; }
   h2 { margin: 0 0 12px; }
   p { color: var(--muted); margin: 6px 0 14px; line-height: 1.5; }
@@ -44,7 +48,40 @@
   button:disabled { background: #574b3b; color: #9a8c76; cursor: not-allowed; }
   button.ghost { background: transparent; color: var(--text); border: 1px solid #574b3b; }
   #shop { display: none; }
-  .row { display: flex; justify-content: space-between; font-size: 14px; margin: 4px 0; color: var(--text); }
+  #codeBox[hidden], #rankBox[hidden] { display: none; }
+  #rankBox { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 16px; }
+  #rankList { list-style: none; margin: 0 0 4px; padding: 0; text-align: left; display: flex; flex-direction: column; gap: 4px; }
+  #rankList li { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: #1b1713; font-size: 14px; font-variant-numeric: tabular-nums; }
+  #rankList li.me { background: #3a2f1c; outline: 1px solid var(--accent); }
+  #rankList .no { font-weight: 800; color: var(--muted); text-align: center; }
+  #rankList li:nth-child(1) .no { color: #ffcb2e; } #rankList li:nth-child(2) .no { color: #d6dde4; } #rankList li:nth-child(3) .no { color: #d0743a; }
+  #rankList .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #rankList .sub { display: block; font-size: 12px; color: var(--muted); }
+  #rankList .gold { font-weight: 700; color: var(--accent); }
+  #rankNote { font-size: 13px; margin: 8px 0 0; }
+  #petBox { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 16px; }
+  #petBox[hidden] { display: none; }
+  #petBox .card { max-width: 520px; }
+  .eggRow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .eggRow button { margin: 0; font-size: 14px; }
+  .eggRow button small { display: block; font-weight: 500; font-size: 11px; opacity: .8; }
+  #hatchMsg { min-height: 1.5em; font-weight: 700; margin: 10px 0 4px; }
+  #petList { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; margin-top: 8px; text-align: left; }
+  .pet { background: #1b1713; border-radius: 8px; padding: 8px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; border: 1px solid transparent; min-width: 0; }
+  .pet.on { border-color: var(--accent); background: #3a2f1c; }
+  .pet .nm { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .pet .rar { font-size: 11px; font-weight: 700; }
+  .pet .bn { color: var(--muted); font-size: 12px; }
+  .pet .acts { display: flex; gap: 4px; }
+  .pet .acts button { margin: 0; padding: 5px 6px; font-size: 12px; }
+  .r-common { color: #c9c2b4; } .r-rare { color: #6aa3f0; } .r-epic { color: #c27bf0; } .r-legend { color: #ffcb2e; }
+  .row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; margin: 4px 0; color: var(--text); }
+  .hudBtn { pointer-events: auto; width: auto; margin: 0; padding: 8px 12px; font-size: 13px; background: var(--panel); color: var(--text); border: 1px solid #574b3b; }
+  #autoBtn.on { background: #3a7bd5; border-color: #6aa3f0; color: #fff; }
+  #codeInput { width: 100%; font: inherit; font-size: 18px; padding: 10px 12px; border-radius: 8px; border: 1px solid #574b3b; background: #16130f; color: var(--text); text-align: center; }
+  #codeInput:focus { outline: 2px solid var(--accent); }
+  #codeMsg { min-height: 1.4em; font-size: 13px; margin: 8px 0 0; }
+  #autoStatus { font-size: 12px; color: var(--auto); text-shadow: 0 1px 2px #000; }
   #mobile { display: none; }
   @media (pointer: coarse) {
     #mobile { display: block; }
@@ -53,86 +90,185 @@
     #knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.3); }
     .mbtn { position: fixed; right: 24px; width: 76px; height: 76px; border-radius: 50%; background: rgba(240,181,74,.75); color: #241a08; font-weight: 800; display: flex; align-items: center; justify-content: center; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
     #mineBtn { bottom: 80px; }
+    #jumpBtn { bottom: 80px; right: 112px; width: 60px; height: 60px; font-size: 13px; background: rgba(255,255,255,.25); color: #fff; }
     #shopBtn { bottom: 170px; width: 56px; height: 56px; right: 34px; font-size: 13px; background: rgba(255,255,255,.25); color: #fff; }
   }
 </style>
-<script type="importmap">
-{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
 <div id="hud">
   <div id="crosshair"></div>
   <div id="target"><span id="tName"></span><div class="bar"><div class="fill" id="tFill"></div></div></div>
-  <div id="stats" class="panel"></div>
   <div id="inv"></div>
   <div id="toast"></div>
-  <div id="help" class="panel">WASD 이동 · 마우스 시점<br>클릭(누르고 있기) 채굴 · Space 점프<br>B 상점 · Esc 일시정지</div>
+  <div id="topLeft">
+    <div id="stats" class="panel"></div>
+    <div class="btnRow">
+      <button id="autoBtn" class="hudBtn" type="button">🤖 자율 모드 OFF (T)</button>
+      <button id="codeBtn" class="hudBtn" type="button">🔑 코드 (Enter)</button>
+      <button id="rankBtn" class="hudBtn" type="button">🏆 순위 (R)</button>
+      <button id="petBtn" class="hudBtn" type="button">🐾 펫 (P)</button>
+    </div>
+    <div id="autoStatus"></div>
+  </div>
+  <div id="help" class="panel">WASD 이동 · 마우스 시점 (드래그도 가능)<br>클릭(누르고 있기) 블록 캐기 · Space 점프<br>B 상점 · P 펫 · T 자율 모드 · R 순위<br>Enter 코드 · Esc 일시정지</div>
   <div id="mobile">
     <div id="joy"><div id="knob"></div></div>
     <div class="mbtn" id="mineBtn">캐기</div>
+    <div class="mbtn" id="jumpBtn">점프</div>
     <div class="mbtn" id="shopBtn">상점</div>
   </div>
 </div>
 
 <div id="overlay">
   <div class="card">
-    <h1>⛏️ 돌 캐기 3D</h1>
-    <p>채석장의 바위를 곡괭이로 깨서 광석을 모으세요.<br>상점에서 광석을 팔고 곡괭이를 강화하면 더 단단하고 값진 광석을 캘 수 있습니다.</p>
+    <h1>⛏️ 곡괭이 봉우리</h1>
+    <p>블록으로 된 거대한 산을 한 칸씩 파고 들어가세요.<br>겉은 흙과 돌이지만, 깊이 파고 산의 심장부로 갈수록 금·에메랄드·다이아몬드가 숨어 있습니다.<br>가방이 차면 산기슭 상점에서 팔고 장비를 강화하세요.</p>
     <button id="startBtn">시작하기</button>
     <button id="resetBtn" class="ghost">저장 초기화</button>
   </div>
 </div>
 
+<div id="codeBox" hidden>
+  <form id="codeForm" class="card" autocomplete="off">
+    <h2>🔑 코드 입력</h2>
+    <input id="codeInput" type="text" placeholder="코드를 입력하세요" maxlength="20" />
+    <p id="codeMsg"></p>
+    <button type="submit">확인</button>
+    <button type="button" id="codeClose" class="ghost">닫기 (Esc)</button>
+  </form>
+</div>
+
+<div id="rankBox" hidden>
+  <div class="card">
+    <h2>🏆 광부 순위</h2>
+    <p style="margin-top:0">지금까지 상점에서 번 골드 합계 순서예요.</p>
+    <ol id="rankList"></ol>
+    <p id="rankNote"></p>
+    <button type="button" id="rankClose" class="ghost">닫기 (R)</button>
+  </div>
+</div>
+
+<div id="petBox" hidden>
+  <div class="card">
+    <h2>🐾 펫</h2>
+    <p style="margin-top:0">알을 부화시켜 펫을 얻고, 최대 3마리까지 데리고 다니세요. 데리고 다니는 펫의 능력이 모두 더해집니다.</p>
+    <div class="eggRow">
+      <button id="eggBasic" type="button">🥚 산 알 <small>150 G · 희귀 이상 12%</small></button>
+      <button id="eggGold" type="button">🌟 황금 알 <small>1,500 G · 희귀 이상 60%</small></button>
+    </div>
+    <div id="hatchMsg"></div>
+    <div id="petSummary" class="row" style="justify-content:center;color:var(--muted)"></div>
+    <div id="petList"></div>
+    <button type="button" id="petClose" class="ghost">닫기 (P)</button>
+  </div>
+</div>
+
 <div id="shop">
   <div class="card">
-    <h2>🏪 상점</h2>
+    <h2>🏪 산기슭 상점</h2>
     <div id="shopBody"></div>
-    <button id="sellBtn">광석 모두 팔기</button>
+    <button id="sellBtn">광물 모두 팔기</button>
     <button id="upPower">곡괭이 강화</button>
+    <button id="upBag">가방 키우기</button>
     <button id="upSpeed">휘두르기 속도 강화</button>
+    <button id="regenBtn" class="ghost">새 산 솟아오르게 하기</button>
     <button id="closeShop" class="ghost">닫기 (B)</button>
   </div>
 </div>
 
-<script type="module">
-import * as THREE from 'three';
+<script>
+// =====================================================================
+//  곡괭이 봉우리 — 블록 산을 파 내려가는 채굴 게임
+// =====================================================================
 
-// ---------- 데이터 ----------
-const ORES = [
-  { id: 'stone',   name: '돌',       color: 0x8a8580, hp: 3,   value: 1,   tier: 0, weight: 50, emissive: 0x000000 },
-  { id: 'coal',    name: '석탄',     color: 0x2b2b2e, hp: 5,   value: 4,   tier: 0, weight: 24, emissive: 0x000000 },
-  { id: 'copper',  name: '구리',     color: 0xc4703a, hp: 8,   value: 10,  tier: 1, weight: 14, emissive: 0x301000 },
-  { id: 'iron',    name: '철',       color: 0xd8b8a0, hp: 14,  value: 25,  tier: 2, weight: 9,  emissive: 0x100800 },
-  { id: 'gold',    name: '금',       color: 0xffc933, hp: 22,  value: 70,  tier: 3, weight: 5,  emissive: 0x553300 },
-  { id: 'emerald', name: '에메랄드', color: 0x2ee07a, hp: 32,  value: 160, tier: 4, weight: 3,  emissive: 0x0a4020 },
-  { id: 'diamond', name: '다이아몬드', color: 0x7ff3ff, hp: 50, value: 400, tier: 5, weight: 1.5, emissive: 0x115566 },
-];
-const PICK_NAMES = ['나무', '돌', '구리', '철', '금', '다이아'];
-const PICK_COLORS = [0x8b5a2b, 0x8a8580, 0xc4703a, 0xd8d8d8, 0xffc933, 0x7ff3ff];
-
-const state = {
-  money: 0,
-  power: 0,   // 곡괭이 등급 (0~5)
-  speed: 0,   // 속도 등급
-  inv: Object.fromEntries(ORES.map(o => [o.id, 0])),
-  total: 0,
+// ---------- 아이템 & 블록 ----------
+const ITEMS = {
+  dirt:    { name: '흙',        color: 0x8a5a33, value: 1 },
+  stone:   { name: '돌',        color: 0x8d8a86, value: 2 },
+  deep:    { name: '심층암',    color: 0x4a4650, value: 5 },
+  coal:    { name: '석탄',      color: 0x262629, value: 6 },
+  copper:  { name: '구리',      color: 0xd0743a, value: 12 },
+  iron:    { name: '철',        color: 0xe0c2a8, value: 28 },
+  gold:    { name: '금',        color: 0xffcb2e, value: 70 },
+  emerald: { name: '에메랄드',  color: 0x22d87a, value: 160 },
+  diamond: { name: '다이아몬드', color: 0x6ff0ff, value: 400 },
 };
-function load() {
-  try {
-    const s = JSON.parse(localStorage.getItem('rockMiner3d') || 'null');
-    if (s) { Object.assign(state, s); state.inv = { ...Object.fromEntries(ORES.map(o => [o.id, 0])), ...s.inv }; }
-  } catch (e) {}
-}
-function save() { try { localStorage.setItem('rockMiner3d', JSON.stringify(state)); } catch (e) {} }
-load();
+const ITEM_ORDER = Object.keys(ITEMS);
+// 블록 종류 (인덱스 = 격자에 저장되는 값, 0은 빈칸)
+const BLOCKS = [
+  null,
+  { key: 'grass',   name: '잔디',      item: 'dirt',    hp: 2,  tier: 0 },
+  { key: 'dirt',    name: '흙',        item: 'dirt',    hp: 2,  tier: 0 },
+  { key: 'stone',   name: '돌',        item: 'stone',   hp: 4,  tier: 0 },
+  { key: 'deep',    name: '심층암',    item: 'deep',    hp: 9,  tier: 1 },
+  { key: 'coal',    name: '석탄 광맥', item: 'coal',    hp: 5,  tier: 0 },
+  { key: 'copper',  name: '구리 광맥', item: 'copper',  hp: 8,  tier: 1 },
+  { key: 'iron',    name: '철 광맥',   item: 'iron',    hp: 13, tier: 2 },
+  { key: 'gold',    name: '금 광맥',   item: 'gold',    hp: 20, tier: 3 },
+  { key: 'emerald', name: '에메랄드 광맥', item: 'emerald', hp: 30, tier: 4 },
+  { key: 'diamond', name: '다이아몬드 광맥', item: 'diamond', hp: 45, tier: 5 },
+];
+const T = { GRASS: 1, DIRT: 2, STONE: 3, DEEP: 4, COAL: 5, COPPER: 6, IRON: 7, GOLD: 8, EMERALD: 9, DIAMOND: 10 };
+const PICK_NAMES = ['나무', '돌', '구리', '철', '금', '다이아'];
+const PICK_COLORS = [0x8b5a2b, 0x8a8580, 0xd0743a, 0xd8d8d8, 0xffcb2e, 0x6ff0ff];
+
+// ---------- 저장 ----------
+const SAVE_KEY = 'pickaxePeak.v1', WORLD_KEY = 'pickaxePeak.world.v1';
+const state = { money: 0, earned: 0, best: 0, power: 0, speed: 0, bag: 0, total: 0, turbo: false, inv: Object.fromEntries(ITEM_ORDER.map(k => [k, 0])) };
+try {
+  const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+  if (s) { Object.assign(state, s); state.inv = { ...Object.fromEntries(ITEM_ORDER.map(k => [k, 0])), ...s.inv }; }
+} catch (e) {}
+state.earned = Math.max(state.earned || 0, state.money); // 예전 저장에는 번 돈 합계가 없음
+const rank = { db: null, user: null, myId: null, rows: [], loaded: false, note: '', writing: false, dirty: false, readOnly: false, myPlace: 0 };
+function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) {} }
 
 const powerCost = () => Math.round(30 * Math.pow(3.2, state.power));
 const speedCost = () => Math.round(20 * Math.pow(2.4, state.speed));
-const damage = () => 1 + state.power * 1.6;
-const swingTime = () => Math.max(0.16, 0.5 * Math.pow(0.85, state.speed));
+const bagCost = () => Math.round(25 * Math.pow(2.1, state.bag));
+const BAG_MAX_LV = 10;
+// ---------- 펫 ----------
+const RARITY = {
+  common: { name: '일반', cls: 'r-common', release: 40 },
+  rare:   { name: '희귀', cls: 'r-rare',   release: 150 },
+  epic:   { name: '영웅', cls: 'r-epic',   release: 500 },
+  legend: { name: '전설', cls: 'r-legend', release: 2500 },
+};
+// look: 몸 색, 머리 색, 크기, 날개/귀/꼬리 여부
+const PETS = {
+  mole:     { name: '굴착 두더지', emoji: '🦫', rarity: 'common', bonus: { dmg: 0.15 },             desc: '채굴 피해 +15%',  body: 0x6b5344, headC: 0x7d6352, size: 0.42, ears: false, tail: false, wings: false },
+  squirrel: { name: '도토리 다람쥐', emoji: '🐿️', rarity: 'common', bonus: { sell: 0.10 },          desc: '판매가 +10%',    body: 0xc07a3c, headC: 0xd08a4c, size: 0.38, ears: true,  tail: true,  wings: false },
+  pebble:   { name: '조약돌 달팽이', emoji: '🐌', rarity: 'common', bonus: { bag: 10 },             desc: '가방 +10칸',     body: 0x9a948c, headC: 0xc9b98a, size: 0.36, ears: false, tail: false, wings: false },
+  bat:      { name: '동굴 박쥐', emoji: '🦇', rarity: 'rare', bonus: { speed: 0.15 },               desc: '이동 속도 +15%', body: 0x4a3d5c, headC: 0x5a4a6e, size: 0.34, ears: true,  tail: false, wings: true, fly: true },
+  fox:      { name: '광맥 여우', emoji: '🦊', rarity: 'rare', bonus: { sell: 0.25 },                desc: '판매가 +25%',    body: 0xe0702a, headC: 0xf08038, size: 0.42, ears: true,  tail: true,  wings: false },
+  turtle:   { name: '바위 거북', emoji: '🐢', rarity: 'epic', bonus: { bag: 30 },                   desc: '가방 +30칸',     body: 0x5d7a4a, headC: 0x7f9a62, size: 0.5,  ears: false, tail: false, wings: false },
+  golem:    { name: '수정 골렘', emoji: '💎', rarity: 'epic', bonus: { dmg: 0.45 },                 desc: '채굴 피해 +45%', body: 0x7fd8e8, headC: 0x9fe8f4, size: 0.5,  ears: false, tail: false, wings: false, glow: true },
+  dragon:   { name: '용암 드래곤', emoji: '🐉', rarity: 'legend', bonus: { dmg: 0.3, autoMine: 1 }, desc: '피해 +30%, 근처 블록을 스스로 캠', body: 0xd8402a, headC: 0xf05a3a, size: 0.5, ears: true, tail: true, wings: true, fly: true, glow: true },
+  owl:      { name: '별빛 부엉이', emoji: '🦉', rarity: 'legend', bonus: { sell: 0.6, speed: 0.2 }, desc: '판매가 +60%, 속도 +20%', body: 0x3b4a8a, headC: 0x5466a8, size: 0.44, ears: true, tail: false, wings: true, fly: true, glow: true },
+};
+const PET_KEYS = Object.keys(PETS);
+const EGGS = {
+  basic: { cost: 150,  odds: { common: 0.88, rare: 0.10, epic: 0.018, legend: 0.002 } },
+  gold:  { cost: 1500, odds: { common: 0.40, rare: 0.40, epic: 0.16,  legend: 0.04 } },
+};
+const MAX_PETS = 30, MAX_EQUIP = 3;
+if (!Array.isArray(state.pets)) state.pets = [];
+if (!Array.isArray(state.equip)) state.equip = [];
+state.pets = state.pets.filter(k => PETS[k]);
+state.equip = state.equip.filter(i => i >= 0 && i < state.pets.length).slice(0, MAX_EQUIP);
+function petBonus() {
+  const b = { dmg: 0, sell: 0, speed: 0, bag: 0, autoMine: 0 };
+  for (const i of state.equip) { const pb = PETS[state.pets[i]].bonus; for (const k in pb) b[k] += pb[k]; }
+  return b;
+}
+const bagCap = () => 30 + state.bag * 20 + petBonus().bag;
+const damage = () => (1 + state.power * 1.6) * (1 + petBonus().dmg);
+const swingTime = () => Math.max(0.16, 0.42 * Math.pow(0.85, state.speed));
+const bagCount = () => ITEM_ORDER.reduce((n, k) => n + state.inv[k], 0);
 
-// ---------- 렌더러/씬 ----------
+// ---------- 렌더러 & 씬 ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
@@ -141,193 +277,268 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x9cc3d9);
-scene.fog = new THREE.Fog(0x9cc3d9, 30, 85);
-
-const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 200);
+scene.background = new THREE.Color(0x8ec5e8);
+scene.fog = new THREE.Fog(0x8ec5e8, 45, 120);
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 300);
 scene.add(camera);
 
-scene.add(new THREE.HemisphereLight(0xdfefff, 0x5a4630, 0.9));
-const sun = new THREE.DirectionalLight(0xfff1d6, 1.6);
-sun.position.set(25, 40, 15);
+scene.add(new THREE.HemisphereLight(0xe3f1ff, 0x5a4630, 0.55));
+const sun = new THREE.DirectionalLight(0xfff1d6, 0.75);
+sun.position.set(30, 50, 20);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 120 });
+Object.assign(sun.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, near: 1, far: 140 });
+sun.shadow.bias = -0.0006;
 scene.add(sun);
 
-// ---------- 지형 (채석장 분지) ----------
-const ARENA = 38;
-function groundHeight(x, z) {
-  const r = Math.hypot(x, z);
-  const bowl = r > 26 ? (r - 26) * (r - 26) * 0.12 : 0;   // 가장자리 언덕
-  const pit = r < 9 ? -(9 - r) * 0.35 : 0;                // 중앙 구덩이
-  return bowl + pit + Math.sin(x * 0.25) * Math.cos(z * 0.21) * 0.35;
-}
-{
-  const geo = new THREE.PlaneGeometry(ARENA * 2.4, ARENA * 2.4, 120, 120);
-  geo.rotateX(-Math.PI / 2);
-  const pos = geo.attributes.position;
-  const colors = [];
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), z = pos.getZ(i);
-    const y = groundHeight(x, z);
-    pos.setY(i, y);
-    const r = Math.hypot(x, z);
-    if (r > 30) c.setHex(0x6f8f4a).lerp(new THREE.Color(0x8a7a60), Math.random() * 0.3);
-    else c.setHex(0x9a8468).lerp(new THREE.Color(0x7a664e), Math.random() * 0.5);
-    if (r < 9) c.lerp(new THREE.Color(0x5a4a3c), 0.5);
-    colors.push(c.r, c.g, c.b);
+// ---------- 픽셀 텍스처 (캔버스로 직접 그림) ----------
+function rngFrom(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function pixelTex(base, speck, density, seed, opts = {}) {
+  const c = document.createElement('canvas'); c.width = c.height = 16;
+  const g = c.getContext('2d'), r = rngFrom(seed);
+  const b = new THREE.Color(base), s = speck != null ? new THREE.Color(speck) : null, col = new THREE.Color();
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    col.copy(b).multiplyScalar(0.86 + r() * 0.24);
+    if (opts.topBand && y < opts.topBand + (r() < 0.5 ? 1 : 0)) col.setHex(opts.bandColor).multiplyScalar(0.85 + r() * 0.3);
+    g.fillStyle = '#' + col.getHexString(); g.fillRect(x, y, 1, 1);
   }
+  if (s) { // 광맥 덩어리
+    const blobs = Math.round(density);
+    for (let i = 0; i < blobs; i++) {
+      const cx = 2 + Math.floor(r() * 12), cy = 2 + Math.floor(r() * 12);
+      for (let k = 0; k < 4; k++) {
+        const x = cx + Math.floor(r() * 3) - 1, y = cy + Math.floor(r() * 3) - 1;
+        col.copy(s).multiplyScalar(0.8 + r() * 0.45);
+        g.fillStyle = '#' + col.getHexString(); g.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  return t;
+}
+const mat = tex => new THREE.MeshLambertMaterial({ map: tex });
+const stoneBase = 0x86827d, deepBase = 0x4d4953;
+const MATERIALS = [];
+{
+  const grassSide = mat(pixelTex(0x7a5232, null, 0, 11, { topBand: 4, bandColor: 0x5da83e }));
+  const grassTop = mat(pixelTex(0x5da83e, 0x77c450, 5, 12));
+  const dirt = mat(pixelTex(0x7a5232, 0x5e3d24, 4, 13));
+  MATERIALS[T.GRASS] = [grassSide, grassSide, grassTop, dirt, grassSide, grassSide];
+  MATERIALS[T.DIRT] = dirt;
+  MATERIALS[T.STONE] = mat(pixelTex(stoneBase, 0x6e6a66, 4, 14));
+  MATERIALS[T.DEEP] = mat(pixelTex(deepBase, 0x3a3640, 5, 15));
+  MATERIALS[T.COAL] = mat(pixelTex(stoneBase, ITEMS.coal.color, 6, 16));
+  MATERIALS[T.COPPER] = mat(pixelTex(stoneBase, ITEMS.copper.color, 6, 17));
+  MATERIALS[T.IRON] = mat(pixelTex(stoneBase, ITEMS.iron.color, 6, 18));
+  MATERIALS[T.GOLD] = mat(pixelTex(deepBase, ITEMS.gold.color, 7, 19));
+  MATERIALS[T.EMERALD] = mat(pixelTex(deepBase, ITEMS.emerald.color, 6, 20));
+  MATERIALS[T.DIAMOND] = mat(pixelTex(deepBase, ITEMS.diamond.color, 6, 21));
+  for (const t of [T.GOLD, T.EMERALD, T.DIAMOND]) MATERIALS[t].emissive = new THREE.Color(ITEMS[BLOCKS[t].item].color).multiplyScalar(0.12);
+}
+
+// ---------- 블록 산 ----------
+const R = 16, N = R * 2 + 1, H = 24;            // 가로세로 33칸, 높이 24칸
+const grid = new Uint8Array(N * N * H);
+const idx = (x, y, z) => (x + R) + (z + R) * N + y * N * N;
+const inGrid = (x, y, z) => x >= -R && x <= R && z >= -R && z <= R && y >= 0 && y < H;
+const blockAt = (x, y, z) => inGrid(x, y, z) ? grid[idx(x, y, z)] : 0;
+function exposed(x, y, z) { return !blockAt(x + 1, y, z) || !blockAt(x - 1, y, z) || !blockAt(x, y + 1, z) || (y > 0 && !blockAt(x, y - 1, z)) || !blockAt(x, y, z + 1) || !blockAt(x, y, z - 1); }
+const posOf = i => { const y = Math.floor(i / (N * N)), r = i - y * N * N, z = Math.floor(r / N); return [r - z * N - R, y, z - R]; };
+
+function generateMountain(seed) {
+  grid.fill(0);
+  const rnd = rngFrom(seed);
+  const p1 = rnd() * 10, p2 = rnd() * 10;
+  for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) {
+    const r = Math.hypot(x, z) / R;
+    if (r > 1) continue;
+    const ridge = 1.8 * Math.sin(x * 0.42 + p1) * Math.cos(z * 0.37 + p2) + 1.2 * Math.sin((x + z) * 0.23 + p2);
+    const h = Math.min(H, Math.max(0, Math.floor((H - 2) * Math.pow(1 - r, 1.15) + ridge * (1 - r) + 1)));
+    for (let y = 0; y < h; y++) {
+      const d = h - 1 - y;                                   // 표면에서의 깊이
+      const core = Math.hypot(x, (y - 4) * 1.4, z) < 7.5;    // 산의 심장부
+      let t = d === 0 ? T.GRASS : d <= 2 ? T.DIRT : core ? T.DEEP : T.STONE;
+      if (d >= 2) {
+        const k = d + (core ? 6 : 0), v = rnd();
+        if (k >= 11 && v < 0.018) t = T.DIAMOND;
+        else if (k >= 9 && v < 0.045) t = T.EMERALD;
+        else if (k >= 7 && v < 0.085) t = T.GOLD;
+        else if (k >= 5 && v < 0.14) t = T.IRON;
+        else if (k >= 3 && v < 0.21) t = T.COPPER;
+        else if (v < 0.29) t = T.COAL;
+      }
+      grid[idx(x, y, z)] = t;
+    }
+  }
+}
+
+// 인스턴스 메시: 블록 종류별 하나씩, 캔 블록은 마지막 인스턴스와 자리를 바꿔 지움
+const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+const meshes = [], lists = [];
+const where = new Int32Array(N * N * H).fill(-1);
+let blocksLeft = 0, worldTotal = 1, worldSeed = 1;
+const tmpM = new THREE.Matrix4(), tmpC = new THREE.Color();
+function buildMeshes() {
+  for (const m of meshes) if (m) { scene.remove(m); m.dispose?.(); }
+  meshes.length = 0; lists.length = 0; where.fill(-1);
+  const counts = new Array(BLOCKS.length).fill(0);
+  for (let i = 0; i < grid.length; i++) if (grid[i]) counts[grid[i]]++;
+  blocksLeft = counts.reduce((a, b) => a + b, 0);
+  for (let t = 1; t < BLOCKS.length; t++) {
+    const m = new THREE.InstancedMesh(boxGeo, MATERIALS[t], Math.max(1, counts[t]));
+    m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, counts[t]) * 3), 3); // 미리 크기 확보
+    m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+    meshes[t] = m; lists[t] = [];
+    scene.add(m);
+  }
+  // 공기와 맞닿은 블록만 그림 (속은 파낼 때 드러나면 추가)
+  for (let i = 0; i < grid.length; i++) {
+    if (!grid[i]) continue;
+    const [x, y, z] = posOf(i);
+    if (exposed(x, y, z)) addInstance(i);
+  }
+  for (const m of meshes) if (m) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+}
+function addInstance(i) {
+  const t = grid[i], m = meshes[t], n = m.count++;
+  const [x, y, z] = posOf(i);
+  tmpM.makeTranslation(x, y + 0.5, z);
+  m.setMatrixAt(n, tmpM);
+  tmpC.setScalar(0.88 + ((((x * 7 + y * 13 + z * 5) % 7) + 7) % 7) / 50);  // 블록마다 미세한 밝기 차이
+  m.setColorAt(n, tmpC);
+  lists[t].push(i); where[i] = n;
+  m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true;
+}
+function removeBlock(i) {
+  const t = grid[i]; if (!t) return;
+  const n = where[i];
+  if (n >= 0) {
+    const m = meshes[t], list = lists[t], lastN = m.count - 1, last = list[lastN];
+    if (n !== lastN) {
+      m.instanceMatrix.array.copyWithin(n * 16, lastN * 16, lastN * 16 + 16);
+      m.instanceColor.array.copyWithin(n * 3, lastN * 3, lastN * 3 + 3);
+      list[n] = last; where[last] = n;
+    }
+    list.pop(); m.count--;
+    m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true;
+  }
+  where[i] = -1; grid[i] = 0; blocksLeft--;
+  // 새로 드러난 이웃 블록 그리기
+  const [x, y, z] = posOf(i);
+  for (const [dx, dy, dz] of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]) {
+    if (!inGrid(x + dx, y + dy, z + dz)) continue;
+    const j = idx(x + dx, y + dy, z + dz);
+    if (grid[j] && where[j] < 0) addInstance(j);
+  }
+}
+
+// 월드 저장/불러오기 (캔 자리 유지)
+let worldDirty = false, worldSaveTimer = 0;
+function saveWorld() {
+  try {
+    let s = ''; for (let i = 0; i < grid.length; i += 8192) s += String.fromCharCode.apply(null, grid.subarray(i, i + 8192));
+    localStorage.setItem(WORLD_KEY, JSON.stringify({ seed: worldSeed, total: worldTotal, data: btoa(s) }));
+  } catch (e) {}
+  worldDirty = false;
+}
+function newMountain() {
+  worldSeed = (Math.random() * 1e9) | 0;
+  generateMountain(worldSeed);
+  worldTotal = grid.reduce((n, v) => n + (v ? 1 : 0), 0);
+  buildMeshes(); saveWorld();
+}
+(function loadWorld() {
+  try {
+    const w = JSON.parse(localStorage.getItem(WORLD_KEY) || 'null');
+    if (w && w.data) {
+      const s = atob(w.data);
+      if (s.length === grid.length) {
+        for (let i = 0; i < s.length; i++) grid[i] = s.charCodeAt(i);
+        worldSeed = w.seed; worldTotal = w.total || 1; buildMeshes(); return;
+      }
+    }
+  } catch (e) {}
+  newMountain();
+})();
+
+// ---------- 주변 지형 & 상점 ----------
+{
+  const geo = new THREE.PlaneGeometry(240, 240, 60, 60);
+  geo.rotateX(-Math.PI / 2);
+  const colors = [], c = new THREE.Color(), r = rngFrom(7);
+  for (let i = 0; i < geo.attributes.position.count; i++) { c.setHex(0x5f9a3e).multiplyScalar(0.85 + r() * 0.25); colors.push(c.r, c.g, c.b); }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
-  const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
+  const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
   ground.receiveShadow = true;
   scene.add(ground);
 }
-
-// 장식: 나무 & 상점 오두막
-function addTree(x, z) {
-  const g = new THREE.Group();
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 1.6, 6), new THREE.MeshStandardMaterial({ color: 0x6b4a2b, flatShading: true }));
-  trunk.position.y = 0.8;
-  const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.2, 2.8, 7), new THREE.MeshStandardMaterial({ color: 0x3f7a3a, flatShading: true }));
-  leaves.position.y = 2.8;
-  g.add(trunk, leaves);
-  g.traverse(m => { m.castShadow = true; });
-  g.position.set(x, groundHeight(x, z), z);
-  g.scale.setScalar(0.8 + Math.random() * 0.7);
-  scene.add(g);
-}
-for (let i = 0; i < 46; i++) {
-  const a = Math.random() * Math.PI * 2, r = 33 + Math.random() * 12;
-  addTree(Math.cos(a) * r, Math.sin(a) * r);
-}
-const SHOP_POS = new THREE.Vector3(0, 0, 20);
+const SHOP_POS = new THREE.Vector3(0, 0, 25);
+const SHOP_HALF = { x: 2.3, z: 1.8 };
 {
   const g = new THREE.Group();
-  const wood = new THREE.MeshStandardMaterial({ color: 0x8b6239, flatShading: true });
-  const base = new THREE.Mesh(new THREE.BoxGeometry(4, 2.4, 3), wood); base.position.y = 1.2;
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(3.3, 1.6, 4), new THREE.MeshStandardMaterial({ color: 0xa83b2c, flatShading: true }));
-  roof.position.y = 3.2; roof.rotation.y = Math.PI / 4;
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(2, 0.6, 0.1), new THREE.MeshStandardMaterial({ color: 0xf0b54a }));
-  sign.position.set(0, 2.0, -1.56);
-  const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.6, 0.1), new THREE.MeshStandardMaterial({ color: 0x4a3018 }));
-  door.position.set(0, 0.8, -1.55);
-  g.add(base, roof, sign, door);
+  const wood = mat(pixelTex(0x8b6239, 0x6e4a28, 5, 30));
+  const base = new THREE.Mesh(new THREE.BoxGeometry(4, 2.6, 3), wood); base.position.y = 1.3;
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.6, 3.8), mat(pixelTex(0xb2402e, 0x8f2f21, 6, 31))); roof.position.y = 2.9;
+  const roof2 = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.5, 2.6), roof.material); roof2.position.y = 3.45;
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 0.12), new THREE.MeshLambertMaterial({ color: 0xf0b54a }));
+  sign.position.set(0, 2.1, -1.56);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.7, 0.1), new THREE.MeshLambertMaterial({ color: 0x4a3018 }));
+  door.position.set(0, 0.85, -1.55);
+  g.add(base, roof, roof2, sign, door);
   g.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
-  g.position.set(SHOP_POS.x, groundHeight(SHOP_POS.x, SHOP_POS.z), SHOP_POS.z);
+  g.position.copy(SHOP_POS);
   scene.add(g);
 }
-
-// ---------- 바위 ----------
-const rocks = [];
-const rockGroup = new THREE.Group();
-scene.add(rockGroup);
-
-function pickOre(r) {
-  // 중앙 구덩이에 가까울수록 희귀 광석 확률 증가
-  const bonus = 1 + Math.max(0, (14 - r)) * 0.25;
-  const weights = ORES.map((o, i) => o.weight * (i >= 3 ? bonus : 1));
-  let t = Math.random() * weights.reduce((a, b) => a + b, 0);
-  for (let i = 0; i < ORES.length; i++) { t -= weights[i]; if (t <= 0) return ORES[i]; }
-  return ORES[0];
-}
-
-function makeRockGeometry(size) {
-  const geo = new THREE.IcosahedronGeometry(size, 1);
-  const pos = geo.attributes.position;
-  const v = new THREE.Vector3();
-  const seed = Math.random() * 100;
-  for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i);
-    const n = 1 + 0.22 * Math.sin(v.x * 3 + seed) * Math.cos(v.z * 2.7 + seed) + 0.08 * Math.sin(v.y * 5 + seed * 2);
-    v.multiplyScalar(n);
-    v.y *= 0.75;
-    pos.setXYZ(i, v.x, v.y, v.z);
+// 각진 나무
+{
+  const trunkMat = mat(pixelTex(0x6b4a2b, 0x553820, 4, 40)), leafMat = mat(pixelTex(0x3f8a3a, 0x2f6e2c, 8, 41));
+  const r = rngFrom(99);
+  for (let i = 0; i < 50; i++) {
+    const a = r() * Math.PI * 2, d = 24 + r() * 26, x = Math.cos(a) * d, z = Math.sin(a) * d;
+    if (Math.hypot(x - SHOP_POS.x, z - SHOP_POS.z) < 7) continue;
+    const g = new THREE.Group(), h = 2 + Math.floor(r() * 3);
+    const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.6, h, 0.6), trunkMat); trunk.position.y = h / 2;
+    const leaves = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2, 2.4), leafMat); leaves.position.y = h + 0.8;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1, 1.3), leafMat); top.position.y = h + 2.2;
+    g.add(trunk, leaves, top);
+    g.traverse(m => { if (m.isMesh) m.castShadow = true; });
+    g.position.set(x, 0, z);
+    scene.add(g);
   }
-  geo.computeVertexNormals();
-  return geo;
 }
 
-const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8a8580, roughness: 0.95, flatShading: true });
-const crystalGeo = new THREE.OctahedronGeometry(0.22, 0);
-
-function spawnRock() {
-  let x, z, tries = 0;
-  do {
-    const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 25;
-    x = Math.cos(a) * r; z = Math.sin(a) * r; tries++;
-  } while (tries < 30 && (rocks.some(k => Math.hypot(k.mesh.position.x - x, k.mesh.position.z - z) < 2.6) || Math.hypot(x - SHOP_POS.x, z - SHOP_POS.z) < 5));
-  const r = Math.hypot(x, z);
-  const ore = pickOre(r);
-  const size = 0.7 + Math.random() * 0.5 + ore.tier * 0.08;
-  const mesh = new THREE.Mesh(makeRockGeometry(size), ore.id === 'stone' ? stoneMat : stoneMat.clone());
-  if (ore.id !== 'stone') mesh.material.color.setHex(ore.id === 'coal' ? 0x5c5955 : 0x7d7873);
-  mesh.castShadow = true; mesh.receiveShadow = true;
-  mesh.position.set(x, groundHeight(x, z) + size * 0.35, z);
-  mesh.rotation.y = Math.random() * Math.PI * 2;
-
-  // 광석 결정 박기
-  if (ore.id !== 'stone') {
-    const mat = new THREE.MeshStandardMaterial({ color: ore.color, emissive: ore.emissive, roughness: 0.35, metalness: ore.tier >= 2 ? 0.5 : 0.1, flatShading: true });
-    const count = 4 + Math.floor(Math.random() * 4);
-    const dir = new THREE.Vector3();
-    for (let i = 0; i < count; i++) {
-      dir.set(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5).normalize();
-      const c = new THREE.Mesh(crystalGeo, mat);
-      c.position.copy(dir).multiplyScalar(size * 0.82);
-      c.position.y *= 0.75;
-      c.scale.setScalar(0.6 + Math.random() * 0.8);
-      c.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
-      c.castShadow = true;
-      mesh.add(c);
-    }
-  }
-  const rock = { mesh, ore, hp: ore.hp, maxHp: ore.hp, shake: 0, base: mesh.position.clone(), size };
-  mesh.userData.rock = rock;
-  rockGroup.add(mesh);
-  rocks.push(rock);
-  return rock;
-}
-const MAX_ROCKS = 55;
-for (let i = 0; i < MAX_ROCKS; i++) spawnRock();
-
-// ---------- 파티클 ----------
-const particles = [];
-const partGeo = new THREE.BoxGeometry(0.09, 0.09, 0.09);
+// ---------- 파티클 & 주울 광물 ----------
+const particles = [], pickups = [];
+const partGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1), pickGeo = new THREE.BoxGeometry(0.28, 0.28, 0.28);
 function burst(pos, color, n, speed = 3) {
+  const m0 = new THREE.MeshLambertMaterial({ color });
   for (let i = 0; i < n; i++) {
-    const m = new THREE.Mesh(partGeo, new THREE.MeshStandardMaterial({ color, flatShading: true }));
+    const m = new THREE.Mesh(partGeo, m0);
     m.position.copy(pos);
-    const v = new THREE.Vector3((Math.random() - 0.5) * speed, Math.random() * speed * 0.9 + 1, (Math.random() - 0.5) * speed);
     m.scale.setScalar(0.6 + Math.random() * 1.4);
     scene.add(m);
-    particles.push({ m, v, life: 0.7 + Math.random() * 0.6 });
+    particles.push({ m, v: new THREE.Vector3((Math.random() - 0.5) * speed, Math.random() * speed * 0.9 + 1, (Math.random() - 0.5) * speed), life: 0.6 + Math.random() * 0.5 });
   }
 }
-
-// 수집 아이템 (깨진 바위에서 튀어나와 플레이어에게 날아옴)
-const pickups = [];
-function dropOre(rock) {
-  const n = rock.ore.id === 'stone' ? 1 : 1 + Math.floor(Math.random() * 3);
-  for (let i = 0; i < n; i++) {
-    const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), new THREE.MeshStandardMaterial({ color: rock.ore.color, emissive: rock.ore.emissive, flatShading: true }));
-    m.position.copy(rock.mesh.position);
-    scene.add(m);
-    pickups.push({ m, ore: rock.ore, v: new THREE.Vector3((Math.random() - 0.5) * 3, 4 + Math.random() * 2, (Math.random() - 0.5) * 3), t: 0 });
-  }
+function dropItem(itemKey, pos) {
+  const it = ITEMS[itemKey];
+  const m = new THREE.Mesh(pickGeo, new THREE.MeshLambertMaterial({ color: it.color, emissive: new THREE.Color(it.color).multiplyScalar(0.25) }));
+  m.position.copy(pos);
+  scene.add(m);
+  pickups.push({ m, item: itemKey, v: new THREE.Vector3((Math.random() - 0.5) * 2, 3 + Math.random() * 1.5, (Math.random() - 0.5) * 2), t: 0 });
 }
 
-// ---------- 곡괭이 (1인칭 뷰모델) ----------
+// 금 이상 블록 주변에 반짝임
+const sparkleGeo = new THREE.OctahedronGeometry(0.06, 0);
+
+// ---------- 곡괭이 (1인칭) ----------
 const pick = new THREE.Group();
-const handle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.05), new THREE.MeshStandardMaterial({ color: 0x6b4423 }));
+const handle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.05), new THREE.MeshLambertMaterial({ color: 0x6b4423 }));
 handle.position.y = 0.3;
-const headMat = new THREE.MeshStandardMaterial({ color: PICK_COLORS[state.power], metalness: 0.4, roughness: 0.4, flatShading: true });
-const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.07, 0.07), headMat);
-head.position.y = 0.58;
-const tipL = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.14, 4), headMat);
-tipL.rotation.z = Math.PI / 2; tipL.position.set(-0.31, 0.58, 0);
+const headMat = new THREE.MeshLambertMaterial({ color: PICK_COLORS[state.power] });
+const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.07, 0.07), headMat); head.position.y = 0.58;
+const tipL = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.14, 4), headMat); tipL.rotation.z = Math.PI / 2; tipL.position.set(-0.31, 0.58, 0);
 const tipR = tipL.clone(); tipR.rotation.z = -Math.PI / 2; tipR.position.x = 0.31;
 pick.add(handle, head, tipL, tipR);
 const pickHolder = new THREE.Group();
@@ -336,6 +547,13 @@ pickHolder.scale.setScalar(0.8);
 pickHolder.add(pick);
 pick.rotation.set(-0.3, -0.4, 0.15);
 camera.add(pickHolder);
+
+// 조준 블록 표시 (테두리 + 금 가는 정도)
+const highlight = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02, 1.02, 1.02)), new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.6 }));
+const crackMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthWrite: false });
+const crack = new THREE.Mesh(new THREE.BoxGeometry(1.015, 1.015, 1.015), crackMat);
+highlight.visible = crack.visible = false;
+scene.add(highlight, crack);
 
 // ---------- 사운드 ----------
 let actx = null;
@@ -347,8 +565,7 @@ function sound(freq = 220, dur = 0.08, type = 'noise', vol = 0.25) {
     g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
     g.connect(actx.destination);
     if (type === 'noise') {
-      const buf = actx.createBuffer(1, actx.sampleRate * dur, actx.sampleRate);
-      const d = buf.getChannelData(0);
+      const buf = actx.createBuffer(1, Math.max(1, actx.sampleRate * dur), actx.sampleRate), d = buf.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
       const src = actx.createBufferSource(); src.buffer = buf;
       const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq * 6; f.Q.value = 0.8;
@@ -361,73 +578,122 @@ function sound(freq = 220, dur = 0.08, type = 'noise', vol = 0.25) {
   } catch (e) {}
 }
 
-// ---------- 플레이어 & 입력 ----------
-const player = { pos: new THREE.Vector3(0, 0, 14), vel: new THREE.Vector3(), yaw: 0, pitch: -0.15, onGround: false };
-const EYE = 1.6;
+// ---------- 플레이어 ----------
+const SPAWN = new THREE.Vector3(0, 0, 20);
+const player = { pos: SPAWN.clone(), vel: new THREE.Vector3(), yaw: 0, pitch: 0.12, onGround: false };
+const EYE = 1.55, HALF_W = 0.3, BODY_H = 1.75, REACH = 4.6;
+const TURBO_MULT = 2.6;
+
+function solidAt(x, y, z) { // 월드 좌표의 블록 칸이 막혀 있는지
+  if (y < 0) return true;
+  return blockAt(x, y, z) !== 0;
+}
+function collides(px, py, pz) {
+  const x0 = Math.floor(px - HALF_W + 0.5), x1 = Math.floor(px + HALF_W + 0.5);
+  const z0 = Math.floor(pz - HALF_W + 0.5), z1 = Math.floor(pz + HALF_W + 0.5);
+  const y0 = Math.floor(py), y1 = Math.floor(py + BODY_H - 0.01);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) if (solidAt(x, y, z)) return true;
+  // 상점 건물
+  if (py < 3 && Math.abs(px - SHOP_POS.x) < SHOP_HALF.x + HALF_W && Math.abs(pz - SHOP_POS.z) < SHOP_HALF.z + HALF_W) return true;
+  return false;
+}
+let stepLift = 0; // 계단 오를 때 카메라를 부드럽게
+function moveHorizontal(axis, delta) {
+  const p = player.pos;
+  const old = p[axis];
+  p[axis] += delta;
+  if (!collides(p.x, p.y, p.z)) return true;
+  // 한 칸 높이는 자동으로 올라섬
+  if (player.onGround && !collides(p.x, p.y + 1.01, p.z) && !collides(p.x - (axis === 'x' ? delta : 0), p.y + 1.01, p.z - (axis === 'z' ? delta : 0))) {
+    p.y += 1.01; stepLift -= 1.01; return true;
+  }
+  p[axis] = old;
+  return false;
+}
+
+// ---------- 입력 ----------
 const keys = {};
-let mouseDown = false, playing = false, shopOpen = false;
+let mouseDown = false, playing = false, shopOpen = false, codeOpen = false, rankOpen = false, petOpen = false;
+const menuOpen = () => shopOpen || codeOpen || rankOpen || petOpen;
 const isTouch = matchMedia('(pointer: coarse)').matches;
 const joy = { x: 0, y: 0 };
-
-const overlay = document.getElementById('overlay');
-const shopEl = document.getElementById('shop');
-
-function startPlay() {
-  overlay.style.display = 'none';
-  playing = true;
-  if (!isTouch) renderer.domElement.requestPointerLock?.();
-  sound(400, 0.05, 'sine', 0.05);
+const overlay = document.getElementById('overlay'), shopEl = document.getElementById('shop');
+let wasLocked = false;
+const isLocked = () => document.pointerLockElement === renderer.domElement;
+function tryLock() {
+  if (isTouch) return;
+  try { const r = renderer.domElement.requestPointerLock?.(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
 }
+function pause() { playing = false; mouseDown = false; overlay.style.display = 'flex'; document.getElementById('startBtn').textContent = '계속하기'; }
+function startPlay() { overlay.style.display = 'none'; playing = true; tryLock(); sound(400, 0.05, 'sine', 0.05); }
 document.getElementById('startBtn').onclick = startPlay;
-document.getElementById('resetBtn').onclick = () => {
-  if (!confirm('저장된 진행 상황을 모두 지울까요?')) return;
-  try { localStorage.removeItem('rockMiner3d'); } catch (e) {}
+const resetBtn = document.getElementById('resetBtn');
+resetBtn.onclick = () => {
+  if (!resetBtn.dataset.armed) {
+    resetBtn.dataset.armed = '1'; resetBtn.textContent = '정말 지울까요? 한 번 더 누르세요';
+    setTimeout(() => { delete resetBtn.dataset.armed; resetBtn.textContent = '저장 초기화'; }, 3000);
+    return;
+  }
+  try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(WORLD_KEY); } catch (e) {}
   location.reload();
 };
-renderer.domElement.addEventListener('click', () => {
-  if (playing && !shopOpen && !isTouch && document.pointerLockElement !== renderer.domElement) renderer.domElement.requestPointerLock?.();
-});
+renderer.domElement.addEventListener('click', () => { if (playing && !menuOpen() && !isLocked()) tryLock(); });
 document.addEventListener('pointerlockchange', () => {
-  if (!document.pointerLockElement && playing && !shopOpen && !isTouch) { playing = false; overlay.style.display = 'flex'; document.getElementById('startBtn').textContent = '계속하기'; }
+  if (isLocked()) { wasLocked = true; return; }
+  if (wasLocked && playing && !menuOpen() && !isTouch) pause();
+  wasLocked = false;
 });
+let dragging = false;
+renderer.domElement.addEventListener('mousedown', e => { dragging = true; if (e.button === 0) mouseDown = true; e.preventDefault(); });
+document.addEventListener('mouseup', e => { dragging = false; if (e.button === 0) mouseDown = false; });
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('mousemove', e => {
-  if (document.pointerLockElement !== renderer.domElement) return;
-  if (Math.abs(e.movementX) > 250 || Math.abs(e.movementY) > 250) return; // 포인터 잠금 직후 튀는 값 무시
-  player.yaw -= e.movementX * 0.0022;
-  player.pitch = THREE.MathUtils.clamp(player.pitch - e.movementY * 0.0022, -1.5, 1.5);
+  if (!playing || menuOpen()) return;
+  if (!isLocked() && !dragging) return;
+  if (Math.abs(e.movementX) > 250 || Math.abs(e.movementY) > 250) return;
+  const k = isLocked() ? 0.0022 : 0.005;
+  player.yaw -= e.movementX * k;
+  player.pitch = THREE.MathUtils.clamp(player.pitch - e.movementY * k, -1.5, 1.5);
 });
-document.addEventListener('mousedown', e => { if (e.button === 0) mouseDown = true; });
-document.addEventListener('mouseup', e => { if (e.button === 0) mouseDown = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; dragging = false; });
+const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 document.addEventListener('keydown', e => {
+  if (codeOpen) { if (e.code === 'Escape') closeCode(); return; }
+  if (rankOpen) { if (e.code === 'Escape' || e.code === 'KeyR') closeRank(); return; }
+  if (petOpen) { if (e.code === 'Escape' || e.code === 'KeyP') closePets(); return; }
+  if (e.code === 'KeyP' && playing && !shopOpen) { openPets(); return; }
+  if (e.code === 'KeyR' && playing && !shopOpen) { openRank(); return; }
+  if ((e.code === 'Enter' || e.code === 'NumpadEnter') && playing && !shopOpen) { e.preventDefault(); openCode(); return; }
   keys[e.code] = true;
-  if (e.code === 'KeyB' && playing) toggleShop();
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (e.code === 'Escape' && playing && !menuOpen() && !isLocked()) { pause(); return; }
+  if (e.code === 'KeyB' && playing && !codeOpen) toggleShop();
+  if (e.code === 'KeyT' && playing && !menuOpen()) setAuto(!auto.on);
+  if (auto.on && MOVE_KEYS.includes(e.code)) setAuto(false);
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 
-// 터치 조작
 if (isTouch) {
   const joyEl = document.getElementById('joy'), knob = document.getElementById('knob');
   let joyId = null;
   joyEl.addEventListener('touchstart', e => { joyId = e.changedTouches[0].identifier; e.preventDefault(); }, { passive: false });
-  const joyMove = e => {
+  joyEl.addEventListener('touchmove', e => {
     for (const t of e.changedTouches) if (t.identifier === joyId) {
       const r = joyEl.getBoundingClientRect();
       let dx = (t.clientX - r.left - r.width / 2) / 50, dy = (t.clientY - r.top - r.height / 2) / 50;
       const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
-      joy.x = dx; joy.y = dy;
-      knob.style.transform = `translate(${dx * 35}px, ${dy * 35}px)`;
+      joy.x = dx; joy.y = dy; knob.style.transform = `translate(${dx * 35}px, ${dy * 35}px)`;
     }
-  };
+  }, { passive: true });
   const joyEnd = e => { for (const t of e.changedTouches) if (t.identifier === joyId) { joyId = null; joy.x = joy.y = 0; knob.style.transform = ''; } };
-  joyEl.addEventListener('touchmove', joyMove, { passive: true });
   joyEl.addEventListener('touchend', joyEnd); joyEl.addEventListener('touchcancel', joyEnd);
-
   const mineBtn = document.getElementById('mineBtn');
   mineBtn.addEventListener('touchstart', e => { mouseDown = true; e.preventDefault(); }, { passive: false });
   mineBtn.addEventListener('touchend', () => { mouseDown = false; });
+  const jumpBtn = document.getElementById('jumpBtn');
+  jumpBtn.addEventListener('touchstart', e => { keys.Space = true; e.preventDefault(); }, { passive: false });
+  jumpBtn.addEventListener('touchend', () => { keys.Space = false; });
   document.getElementById('shopBtn').addEventListener('touchstart', e => { e.preventDefault(); if (playing) toggleShop(); }, { passive: false });
-
-  // 화면 드래그로 시점 회전
   let lookId = null, lx = 0, ly = 0;
   renderer.domElement.addEventListener('touchstart', e => { const t = e.changedTouches[0]; lookId = t.identifier; lx = t.clientX; ly = t.clientY; }, { passive: true });
   renderer.domElement.addEventListener('touchmove', e => {
@@ -444,51 +710,82 @@ function toggleShop() {
   shopOpen = !shopOpen;
   shopEl.style.display = shopOpen ? 'flex' : 'none';
   mouseDown = false;
-  if (shopOpen) { if (!isTouch) document.exitPointerLock?.(); renderShop(); }
-  else if (!isTouch) renderer.domElement.requestPointerLock?.();
+  if (shopOpen) { if (isLocked()) document.exitPointerLock?.(); renderShop(); }
+  else tryLock();
 }
-function inventoryValue() { return ORES.reduce((s, o) => s + state.inv[o.id] * o.value, 0); }
+const inventoryValue = () => Math.round(ITEM_ORDER.reduce((s, k) => s + state.inv[k] * ITEMS[k].value, 0) * (1 + petBonus().sell));
+const nearShop = () => Math.hypot(player.pos.x - SHOP_POS.x, player.pos.z - SHOP_POS.z) < 7.5;
 function renderShop() {
-  const near = player.pos.distanceTo(SHOP_POS) < 9;
-  const body = document.getElementById('shopBody');
-  body.innerHTML = `
+  const near = nearShop();
+  document.getElementById('shopBody').innerHTML = `
     <div class="row"><span>보유 골드</span><b style="color:var(--accent)">${state.money} G</b></div>
-    <div class="row"><span>가방 속 광석 가치</span><span>${inventoryValue()} G</span></div>
+    <div class="row"><span>가방 (${bagCount()}/${bagCap()})</span><span>${inventoryValue()} G어치</span></div>
     <div class="row"><span>곡괭이</span><span>${PICK_NAMES[state.power]} (공격력 ${damage().toFixed(1)})</span></div>
     <div class="row"><span>휘두르기 간격</span><span>${swingTime().toFixed(2)}초</span></div>
-    ${near ? '' : '<p style="color:var(--bad)">⚠ 광석을 팔려면 빨간 지붕 상점 가까이 가야 해요. (강화는 어디서나 가능)</p>'}`;
+    <div class="row"><span>남은 산</span><span>${Math.round(blocksLeft / worldTotal * 100)}%</span></div>
+    ${near ? '' : '<p style="color:var(--bad)">⚠ 광물을 팔려면 산기슭의 빨간 지붕 상점 가까이 가야 해요. (강화는 어디서나 가능)</p>'}`;
   const sell = document.getElementById('sellBtn');
   sell.disabled = !near || inventoryValue() === 0;
-  sell.textContent = `광석 모두 팔기 (+${inventoryValue()} G)`;
+  sell.textContent = `광물 모두 팔기 (+${inventoryValue()} G)`;
   const up = document.getElementById('upPower');
   if (state.power >= PICK_NAMES.length - 1) { up.disabled = true; up.textContent = '곡괭이 최대 등급'; }
   else { up.disabled = state.money < powerCost(); up.textContent = `곡괭이 → ${PICK_NAMES[state.power + 1]} (${powerCost()} G)`; }
+  const bg = document.getElementById('upBag');
+  if (state.bag >= BAG_MAX_LV) { bg.disabled = true; bg.textContent = '가방 최대 크기'; }
+  else { bg.disabled = state.money < bagCost(); bg.textContent = `가방 ${bagCap()} → ${bagCap() + 20}칸 (${bagCost()} G)`; }
   const sp = document.getElementById('upSpeed');
   if (swingTime() <= 0.16) { sp.disabled = true; sp.textContent = '속도 최대'; }
   else { sp.disabled = state.money < speedCost(); sp.textContent = `휘두르기 속도 Lv.${state.speed + 1} (${speedCost()} G)`; }
 }
-document.getElementById('sellBtn').onclick = () => {
-  const v = inventoryValue();
-  state.money += v;
-  for (const o of ORES) state.inv[o.id] = 0;
-  sound(880, 0.25, 'triangle', 0.15);
-  toast(`+${v} G 판매!`);
+function sellAll() {
+  const v = inventoryValue(); if (!v) return;
+  state.money += v; state.earned += v;
+  for (const k of ITEM_ORDER) state.inv[k] = 0;
+  submitScore();
+  sound(880, 0.25, 'triangle', 0.15); toast(`+${v} G 판매!`);
   save(); renderShop(); updateHud();
-};
-document.getElementById('upPower').onclick = () => {
-  const c = powerCost(); if (state.money < c) return;
-  state.money -= c; state.power++;
+}
+function buyPower() {
+  if (state.power >= PICK_NAMES.length - 1 || state.money < powerCost()) return false;
+  state.money -= powerCost(); state.power++;
   headMat.color.setHex(PICK_COLORS[state.power]);
-  sound(520, 0.3, 'square', 0.08);
-  toast(`${PICK_NAMES[state.power]} 곡괭이 획득!`);
-  save(); renderShop(); updateHud();
-};
-document.getElementById('upSpeed').onclick = () => {
-  const c = speedCost(); if (state.money < c) return;
-  state.money -= c; state.speed++;
+  sound(520, 0.3, 'square', 0.08); toast(`${PICK_NAMES[state.power]} 곡괭이 획득!`);
+  save(); renderShop(); updateHud(); return true;
+}
+function buyBag() {
+  if (state.bag >= BAG_MAX_LV || state.money < bagCost()) return false;
+  state.money -= bagCost(); state.bag++;
+  sound(600, 0.2, 'square', 0.08);
+  save(); renderShop(); updateHud(); return true;
+}
+function buySpeed() {
+  if (swingTime() <= 0.16 || state.money < speedCost()) return false;
+  state.money -= speedCost(); state.speed++;
   sound(660, 0.2, 'square', 0.08);
-  save(); renderShop(); updateHud();
+  save(); renderShop(); updateHud(); return true;
+}
+function regenMountain(msg) {
+  newMountain();
+  player.pos.copy(SPAWN); player.vel.set(0, 0, 0); player.yaw = 0;
+  auto.target = null;
+  toast(msg || '⛰️ 새 산이 솟아올랐어요!', '#f0b54a');
+  sound(70, 0.8, 'noise', 0.5);
+  renderShop(); updateHud();
+}
+const regenBtn = document.getElementById('regenBtn');
+regenBtn.onclick = () => {
+  if (!regenBtn.dataset.armed) {
+    regenBtn.dataset.armed = '1'; regenBtn.textContent = '지금 산이 사라져요. 한 번 더 누르세요';
+    setTimeout(() => { delete regenBtn.dataset.armed; regenBtn.textContent = '새 산 솟아오르게 하기'; }, 3000);
+    return;
+  }
+  delete regenBtn.dataset.armed; regenBtn.textContent = '새 산 솟아오르게 하기';
+  regenMountain();
 };
+document.getElementById('sellBtn').onclick = sellAll;
+document.getElementById('upPower').onclick = buyPower;
+document.getElementById('upBag').onclick = buyBag;
+document.getElementById('upSpeed').onclick = buySpeed;
 document.getElementById('closeShop').onclick = toggleShop;
 
 // ---------- HUD ----------
@@ -498,200 +795,605 @@ const toastEl = document.getElementById('toast');
 let toastTimer;
 function toast(msg, color = '#fff') {
   toastEl.textContent = msg; toastEl.style.color = color; toastEl.style.opacity = 1;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.style.opacity = 0, 1300);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.style.opacity = 0, 1400);
 }
+const hex = c => '#' + c.toString(16).padStart(6, '0');
 function updateHud() {
-  statsEl.innerHTML = `💰 <b>${state.money} G</b><br>⛏️ ${PICK_NAMES[state.power]} 곡괭이<br>🪨 캔 바위: ${state.total}`;
-  invEl.innerHTML = ORES.filter(o => state.inv[o.id] > 0).map(o =>
-    `<div class="slot"><span class="dot" style="background:#${o.color.toString(16).padStart(6, '0')}"></span>${o.name} ${state.inv[o.id]}</div>`).join('')
+  const full = bagCount() >= bagCap();
+  statsEl.innerHTML = `💰 <b>${state.money} G</b><br>⛏️ ${PICK_NAMES[state.power]} 곡괭이<br>`
+    + `🎒 <span class="${full ? 'full' : ''}">${bagCount()}/${bagCap()}${full ? ' 가득!' : ''}</span><br>`
+    + `⛰️ 높이 ${Math.max(0, Math.floor(player.pos.y))}m · 캔 블록 ${state.total}`
+    + (state.equip.length ? `<br>🐾 ${state.equip.map(i => PETS[state.pets[i]].emoji).join(' ')}` : '')
+    + (rank.myPlace ? `<br>🏆 내 순위 <b>${rank.myPlace}위</b>` : '')
+    + (state.turbo ? '<br>🛡️ <b>방탄유리 질주 ON</b>' : '');
+  invEl.innerHTML = ITEM_ORDER.filter(k => state.inv[k] > 0).map(k =>
+    `<div class="slot"><span class="dot" style="background:${hex(ITEMS[k].color)}"></span>${ITEMS[k].name} ${state.inv[k]}</div>`).join('')
     || '<div class="slot" style="color:var(--muted)">가방이 비어 있어요</div>';
 }
 updateHud();
 
-// ---------- 채굴 ----------
-const ray = new THREE.Raycaster();
-ray.far = 4.2;
-let swingT = 0;       // 0이면 대기, >0이면 휘두르는 중
-let hitDone = false;
-let target = null;
-const center = new THREE.Vector2(0, 0);
+// ---------- 코드 입력 ----------
+const codeBox = document.getElementById('codeBox'), codeInput = document.getElementById('codeInput'), codeMsg = document.getElementById('codeMsg');
+function openCode() {
+  if (!playing) return;
+  codeOpen = true; mouseDown = false;
+  for (const k in keys) keys[k] = false;
+  if (isLocked()) document.exitPointerLock?.();
+  codeInput.value = ''; codeMsg.textContent = '';
+  codeBox.hidden = false;
+  setTimeout(() => codeInput.focus(), 0);
+}
+function closeCode() { codeOpen = false; codeBox.hidden = true; codeInput.blur(); tryLock(); }
+document.getElementById('codeForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const code = codeInput.value.replace(/\s+/g, '');
+  if (code === '방탄유리') {
+    state.turbo = !state.turbo; save(); updateHud();
+    sound(state.turbo ? 990 : 330, 0.35, 'triangle', 0.15);
+    toast(state.turbo ? '🛡️ 방탄유리 질주! 이동 속도 UP' : '방탄유리 질주 해제', state.turbo ? '#7ff3ff' : '#fff');
+    closeCode();
+  } else {
+    codeMsg.textContent = '알 수 없는 코드예요.'; codeMsg.style.color = 'var(--bad)'; codeInput.select();
+  }
+});
+document.getElementById('codeClose').onclick = closeCode;
+const codeBtn = document.getElementById('codeBtn');
+codeBtn.addEventListener('mousedown', e => e.stopPropagation());
+codeBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!shopOpen) openCode(); });
 
-function findTarget() {
-  ray.setFromCamera(center, camera);
-  const hits = ray.intersectObjects(rockGroup.children, true);
-  if (!hits.length) return null;
-  let o = hits[0].object;
-  while (o && !o.userData.rock) o = o.parent;
-  return o ? { rock: o.userData.rock, point: hits[0].point } : null;
+// ---------- 펫 창 ----------
+const petBox = document.getElementById('petBox'), petList = document.getElementById('petList'), hatchMsg = document.getElementById('hatchMsg');
+function openPets() {
+  if (!playing) return;
+  petOpen = true; mouseDown = false;
+  for (const k in keys) keys[k] = false;
+  if (isLocked()) document.exitPointerLock?.();
+  hatchMsg.textContent = '';
+  petBox.hidden = false; renderPets();
+}
+function closePets() { petOpen = false; petBox.hidden = true; tryLock(); }
+document.getElementById('petClose').onclick = closePets;
+const petBtn = document.getElementById('petBtn');
+petBtn.addEventListener('mousedown', e => e.stopPropagation());
+petBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!shopOpen && !codeOpen && !rankOpen) openPets(); });
+
+function hatch(kind) {
+  const egg = EGGS[kind];
+  if (state.money < egg.cost || state.pets.length >= MAX_PETS) return;
+  state.money -= egg.cost;
+  let r = Math.random(), rarity = 'common';
+  for (const [k, p] of Object.entries(egg.odds)) { if (r < p) { rarity = k; break; } r -= p; }
+  const pool = PET_KEYS.filter(k => PETS[k].rarity === rarity);
+  const key = pool[Math.floor(Math.random() * pool.length)];
+  state.pets.push(key);
+  if (state.equip.length < MAX_EQUIP) state.equip.push(state.pets.length - 1);
+  const pet = PETS[key];
+  hatchMsg.innerHTML = '';
+  const span = document.createElement('span'); span.className = RARITY[rarity].cls;
+  span.textContent = `🐣 ${pet.emoji} ${pet.name} (${RARITY[rarity].name}) 탄생!`;
+  hatchMsg.appendChild(span);
+  sound(rarity === 'legend' ? 1200 : rarity === 'epic' ? 980 : 760, rarity === 'legend' ? 0.6 : 0.3, 'triangle', 0.15);
+  if (rarity === 'legend') toast(`🌟 전설 펫 ${pet.name}!`, '#ffcb2e');
+  save(); buildPetMeshes(); renderPets(); updateHud();
+}
+document.getElementById('eggBasic').onclick = () => hatch('basic');
+document.getElementById('eggGold').onclick = () => hatch('gold');
+
+function toggleEquip(i) {
+  const at = state.equip.indexOf(i);
+  if (at >= 0) state.equip.splice(at, 1);
+  else if (state.equip.length < MAX_EQUIP) state.equip.push(i);
+  else { hatchMsg.textContent = `펫은 최대 ${MAX_EQUIP}마리까지 데리고 다닐 수 있어요.`; return; }
+  save(); buildPetMeshes(); renderPets(); updateHud();
+}
+function releasePet(i) {
+  const key = state.pets[i], gold = RARITY[PETS[key].rarity].release;
+  state.pets.splice(i, 1);
+  state.equip = state.equip.filter(j => j !== i).map(j => j > i ? j - 1 : j);
+  state.money += gold;
+  hatchMsg.textContent = `${PETS[key].name}을(를) 놓아주고 ${gold} G를 받았어요.`;
+  save(); buildPetMeshes(); renderPets(); updateHud();
+}
+function renderPets() {
+  const full = state.pets.length >= MAX_PETS;
+  for (const [id, kind] of [['eggBasic', 'basic'], ['eggGold', 'gold']]) document.getElementById(id).disabled = full || state.money < EGGS[kind].cost;
+  const b = petBonus(), parts = [];
+  if (b.dmg) parts.push(`피해 +${Math.round(b.dmg * 100)}%`);
+  if (b.sell) parts.push(`판매가 +${Math.round(b.sell * 100)}%`);
+  if (b.speed) parts.push(`속도 +${Math.round(b.speed * 100)}%`);
+  if (b.bag) parts.push(`가방 +${b.bag}`);
+  if (b.autoMine) parts.push('자동 채굴');
+  document.getElementById('petSummary').textContent =
+    `💰 ${state.money} G · 펫 ${state.pets.length}/${MAX_PETS} · 데리고 다님 ${state.equip.length}/${MAX_EQUIP}` + (parts.length ? ` · ${parts.join(', ')}` : '');
+  // 장착한 펫 먼저, 그다음 등급 높은 순
+  const order = state.pets.map((k, i) => i).sort((a, c) => {
+    const ea = state.equip.includes(a) ? 0 : 1, ec = state.equip.includes(c) ? 0 : 1;
+    if (ea !== ec) return ea - ec;
+    const rk = ['legend', 'epic', 'rare', 'common'];
+    return rk.indexOf(PETS[state.pets[a]].rarity) - rk.indexOf(PETS[state.pets[c]].rarity);
+  });
+  petList.replaceChildren(...order.map(i => {
+    const pet = PETS[state.pets[i]], on = state.equip.includes(i);
+    const el = document.createElement('div'); el.className = 'pet' + (on ? ' on' : '');
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = `${pet.emoji} ${pet.name}`;
+    const rar = document.createElement('div'); rar.className = 'rar ' + RARITY[pet.rarity].cls; rar.textContent = RARITY[pet.rarity].name;
+    const bn = document.createElement('div'); bn.className = 'bn'; bn.textContent = pet.desc;
+    const acts = document.createElement('div'); acts.className = 'acts';
+    const eq = document.createElement('button'); eq.type = 'button'; eq.textContent = on ? '해제' : '데리고 다니기';
+    if (on) eq.className = 'ghost';
+    eq.onclick = () => toggleEquip(i);
+    const rl = document.createElement('button'); rl.type = 'button'; rl.className = 'ghost'; rl.textContent = `놓아주기 +${RARITY[pet.rarity].release}G`;
+    rl.onclick = () => {
+      if (!rl.dataset.armed) { rl.dataset.armed = '1'; rl.textContent = '정말요?'; setTimeout(() => { if (rl.isConnected) { delete rl.dataset.armed; rl.textContent = `놓아주기 +${RARITY[pet.rarity].release}G`; } }, 2500); return; }
+      releasePet(i);
+    };
+    acts.append(eq, rl);
+    el.append(nm, rar, bn, acts);
+    return el;
+  }));
+  if (!state.pets.length) {
+    const empty = document.createElement('p'); empty.style.gridColumn = '1 / -1'; empty.style.textAlign = 'center';
+    empty.textContent = '아직 펫이 없어요. 광물을 팔아 모은 골드로 알을 부화시켜 보세요!';
+    petList.appendChild(empty);
+  }
 }
 
-function hitRock(t) {
-  const rock = t.rock;
-  if (rock.ore.tier > state.power) {
-    toast(`${PICK_NAMES[rock.ore.tier]} 곡괭이 이상이 필요해요!`, '#e2675a');
-    sound(120, 0.1, 'noise', 0.15);
-    burst(t.point, 0x777777, 3, 1.5);
-    rock.shake = 0.15;
+// 3D 펫: 블록으로 만든 작은 동물이 플레이어를 따라다님
+const petMeshes = [];
+function makePetMesh(pet) {
+  const g = new THREE.Group(), s = pet.size;
+  const bodyM = new THREE.MeshLambertMaterial({ color: pet.body, emissive: pet.glow ? new THREE.Color(pet.body).multiplyScalar(0.25) : 0x000000 });
+  const headM = new THREE.MeshLambertMaterial({ color: pet.headC, emissive: pet.glow ? new THREE.Color(pet.headC).multiplyScalar(0.25) : 0x000000 });
+  const eyeM = new THREE.MeshBasicMaterial({ color: 0x111111 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(s, s * 0.8, s * 1.2), bodyM); body.position.y = s * 0.4;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(s * 0.8, s * 0.75, s * 0.75), headM); head.position.set(0, s * 0.85, -s * 0.65);
+  const eyeG = new THREE.BoxGeometry(s * 0.14, s * 0.14, 0.02);
+  const e1 = new THREE.Mesh(eyeG, eyeM); e1.position.set(-s * 0.2, s * 0.92, -s * 1.03);
+  const e2 = e1.clone(); e2.position.x = s * 0.2;
+  g.add(body, head, e1, e2);
+  if (pet.ears) for (const sx of [-1, 1]) { const ear = new THREE.Mesh(new THREE.BoxGeometry(s * 0.18, s * 0.3, s * 0.12), headM); ear.position.set(sx * s * 0.25, s * 1.32, -s * 0.6); g.add(ear); }
+  if (pet.tail) { const tail = new THREE.Mesh(new THREE.BoxGeometry(s * 0.22, s * 0.6, s * 0.22), bodyM); tail.position.set(0, s * 0.7, s * 0.7); tail.rotation.x = 0.5; g.add(tail); }
+  const wings = [];
+  if (pet.wings) for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group(); pivot.position.set(sx * s * 0.5, s * 0.6, 0);
+    const w = new THREE.Mesh(new THREE.BoxGeometry(s * 0.9, s * 0.06, s * 0.7), bodyM); w.position.x = sx * s * 0.45;
+    pivot.add(w); g.add(pivot); wings.push({ pivot, sx });
+  }
+  g.traverse(m => { if (m.isMesh) m.castShadow = true; });
+  return { g, wings, pet, phase: Math.random() * 10, pos: new THREE.Vector3(), mineCd: 2 + Math.random() * 2 };
+}
+function buildPetMeshes() {
+  for (const p of petMeshes) scene.remove(p.g);
+  petMeshes.length = 0;
+  state.equip.forEach((i, n) => {
+    const pm = makePetMesh(PETS[state.pets[i]]);
+    pm.slot = n;
+    pm.pos.set(player.pos.x + (n - 1) * 1.2, player.pos.y, player.pos.z - 1);
+    pm.g.position.copy(pm.pos);
+    scene.add(pm.g); petMeshes.push(pm);
+  });
+}
+const PET_SLOTS = [[-2.4, -3.2], [2.4, -3.2], [-4.2, -1.4]]; // 1인칭에서 보이도록 양옆 살짝 앞쪽
+const petTmp = new THREE.Vector3();
+function updatePets(dt) {
+  const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
+  for (const pm of petMeshes) {
+    const [ox, oz] = PET_SLOTS[pm.slot];
+    // 플레이어 옆 자리로 따라감 (로컬 → 월드)
+    petTmp.set(player.pos.x + ox * cy + oz * sy, player.pos.y, player.pos.z - ox * sy + oz * cy);
+    const far = pm.pos.distanceTo(petTmp);
+    if (far > 14) pm.pos.copy(petTmp);
+    pm.pos.lerp(petTmp, Math.min(1, dt * (far > 3 ? 6 : 3)));
+    pm.phase += dt * (far > 0.3 ? 12 : 4);
+    const fly = pm.pet.fly ? 0.7 + Math.sin(pm.phase * 0.35) * 0.15 : 0;
+    const hop = pm.pet.fly ? 0 : Math.abs(Math.sin(pm.phase * 0.8)) * (far > 0.3 ? 0.25 : 0.05);
+    pm.g.position.set(pm.pos.x, pm.pos.y + fly + hop, pm.pos.z);
+    const look = far > 0.2 ? Math.atan2(-(petTmp.x - pm.g.position.x), -(petTmp.z - pm.g.position.z)) : player.yaw + Math.PI; // 멈춰 있으면 나를 바라봄
+    pm.g.rotation.y += angleTo(pm.g.rotation.y, look) * Math.min(1, dt * 8);
+    for (const w of pm.wings) w.pivot.rotation.z = w.sx * Math.sin(pm.phase * 1.6) * 0.6;
+    // 자동 채굴 펫: 주변의 캘 수 있는 블록을 스스로 깸
+    if (pm.pet.bonus.autoMine) {
+      pm.mineCd -= dt;
+      if (pm.mineCd <= 0) {
+        pm.mineCd = 4;
+        if (bagCount() + pickups.length < bagCap()) {
+          let best = null, bd = 6;
+          const px = Math.round(player.pos.x), py = Math.floor(player.pos.y), pz = Math.round(player.pos.z);
+          for (let x = px - 4; x <= px + 4; x++) for (let y = Math.max(0, py - 2); y <= py + 3; y++) for (let z = pz - 4; z <= pz + 4; z++) {
+            const t = blockAt(x, y, z);
+            if (!t || BLOCKS[t].tier > state.power || !exposed(x, y, z)) continue;
+            const d = Math.hypot(x - player.pos.x, y - player.pos.y, z - player.pos.z) - ITEMS[BLOCKS[t].item].value * 0.02;
+            if (d < bd) { bd = d; best = { x, y, z, i: idx(x, y, z), type: t }; }
+          }
+          if (best) {
+            burst(new THREE.Vector3(best.x, best.y + 0.5, best.z), 0xff7a2a, 10, 3);
+            damageMap.delete(best.i);
+            breakBlock(best);
+          }
+        }
+      }
+    }
+  }
+}
+buildPetMeshes();
+
+// ---------- 순위 (공유 저장소) ----------
+// scores/<내 id> 문서 하나에 내 기록을 쓰고, 모두의 기록을 번 골드 순으로 구독.
+const rankBox = document.getElementById('rankBox'), rankList = document.getElementById('rankList'), rankNote = document.getElementById('rankNote');
+function openRank() {
+  if (!playing) return;
+  rankOpen = true; mouseDown = false;
+  for (const k in keys) keys[k] = false;
+  if (isLocked()) document.exitPointerLock?.();
+  rankBox.hidden = false; renderRank();
+}
+function closeRank() { rankOpen = false; rankBox.hidden = true; tryLock(); }
+document.getElementById('rankClose').onclick = closeRank;
+const rankBtn = document.getElementById('rankBtn');
+rankBtn.addEventListener('mousedown', e => e.stopPropagation());
+rankBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!shopOpen && !codeOpen) openRank(); });
+
+async function renderRank() {
+  const rows = rank.rows;
+  rank.myPlace = rank.myId ? rows.findIndex(r => r.id === rank.myId) + 1 : 0;
+  if (!rankOpen) return;
+  let names = {};
+  if (rank.user && rows.length) { try { names = await rank.user.profiles(rows.map(r => r.id)); } catch (e) {} }
+  rankList.replaceChildren(...rows.map((r, i) => {
+    const li = document.createElement('li');
+    if (r.id === rank.myId) li.className = 'me';
+    const no = document.createElement('span'); no.className = 'no'; no.textContent = i + 1;
+    const who = document.createElement('span'); who.className = 'who';
+    who.textContent = ((names[r.id] && names[r.id].name) || '이름 없는 광부') + (r.id === rank.myId ? ' (나)' : '');
+    const sub = document.createElement('span'); sub.className = 'sub';
+    const bestKey = ITEM_ORDER[Math.max(0, Math.min(ITEM_ORDER.length - 1, r.best | 0))];
+    sub.textContent = `${PICK_NAMES[Math.max(0, Math.min(5, r.pick | 0))]} 곡괭이 · 블록 ${r.blocks | 0}개 · 최고 ${ITEMS[bestKey].name}`;
+    who.appendChild(sub);
+    const gold = document.createElement('span'); gold.className = 'gold'; gold.textContent = `${(r.earned | 0).toLocaleString()} G`;
+    li.append(no, who, gold);
+    return li;
+  }));
+  let note = rank.note;
+  if (!note && rank.loaded && !rows.length) note = '아직 기록이 없어요. 광물을 팔면 첫 번째로 이름이 올라가요!';
+  if (!note && rank.db && !rank.myPlace) note = state.earned > 0 ? '내 기록은 50위 밖이에요.' : '광물을 상점에 팔면 순위에 올라가요.';
+  if (!note && !rank.loaded) note = '순위를 불러오는 중…';
+  if (rank.readOnly) note = (note ? note + ' ' : '') + '이 공유 설정에서는 내 기록을 올릴 수 없어요 (참여자 이상 권한 필요).';
+  rankNote.textContent = note;
+  rankNote.style.color = rank.readOnly ? 'var(--bad)' : 'var(--muted)';
+}
+function myScore() {
+  return { earned: state.earned | 0, blocks: state.total | 0, pick: state.power | 0, best: state.best | 0, updatedAt: Date.now() };
+}
+async function submitScore() {
+  if (!rank.db || !rank.myId || rank.readOnly || state.earned <= 0) return;
+  if (rank.writing) { rank.dirty = true; return; }       // 한 번에 하나씩만 기록
+  rank.writing = true;
+  try { await rank.db.collection('scores').doc(rank.myId).set(myScore()); }
+  catch (e) { if (e && e.code === 'invalid_argument') { rank.readOnly = true; renderRank(); } }
+  rank.writing = false;
+  if (rank.dirty) { rank.dirty = false; submitScore(); }
+}
+(async function initRanking() {
+  const use = window.claude && window.claude.use;
+  if (!use) { rank.note = '순위는 claude.ai에서 이 게임을 열었을 때만 볼 수 있어요.'; return; }
+  const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+  if (!db) { rank.note = '순위를 보려면 claude.ai에 로그인해 주세요.'; renderRank(); return; }
+  rank.db = db; rank.user = user;
+  rank.myId = user ? await user.id() : null;
+  if (user && user.can) { try { if ((await user.can('data.write')) === false) rank.readOnly = true; } catch (e) {} }
+  const timer = setTimeout(() => { if (!rank.loaded) { rank.note = '순위를 아직 불러오지 못했어요. 잠시 후 다시 열어 보세요.'; renderRank(); } }, 10000);
+  let synced = false;
+  db.collection('scores').orderBy('earned', 'desc').limit(50).onSnapshot(snap => {
+    rank.rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!snap.metadata.fromCache) { rank.loaded = true; rank.note = ''; clearTimeout(timer); }
+    renderRank(); updateHud();
+    // 처음 한 번: 이 기기 기록이 저장소보다 앞서 있으면 올림
+    if (rank.loaded && !synced && rank.myId) {
+      synced = true;
+      db.collection('scores').doc(rank.myId).get().then(d => {
+        const mine = d.exists ? d.data() : null;
+        if (!mine || (mine.earned | 0) < (state.earned | 0)) submitScore();
+      }).catch(() => {});
+    }
+  }, err => { clearTimeout(timer); rank.loaded = true; rank.note = '순위를 불러올 수 없어요.'; renderRank(); });
+})();
+
+// ---------- 블록 조준 (복셀 DDA 광선) ----------
+const camDir = new THREE.Vector3();
+function voxelRay(ox, oy, oz, dx, dy, dz, maxDist) {
+  // 블록 x는 [x-0.5, x+0.5), y는 [y, y+1)
+  let u = ox + 0.5, v = oy, w = oz + 0.5;
+  let ix = Math.floor(u), iy = Math.floor(v), iz = Math.floor(w);
+  const sx = Math.sign(dx), sy = Math.sign(dy), sz = Math.sign(dz);
+  const tdx = sx ? Math.abs(1 / dx) : Infinity, tdy = sy ? Math.abs(1 / dy) : Infinity, tdz = sz ? Math.abs(1 / dz) : Infinity;
+  let tx = sx > 0 ? (ix + 1 - u) * tdx : sx < 0 ? (u - ix) * tdx : Infinity;
+  let ty = sy > 0 ? (iy + 1 - v) * tdy : sy < 0 ? (v - iy) * tdy : Infinity;
+  let tz = sz > 0 ? (iz + 1 - w) * tdz : sz < 0 ? (w - iz) * tdz : Infinity;
+  let t = 0;
+  while (t <= maxDist) {
+    if (iy < 0) return null;
+    const b = blockAt(ix, iy, iz);
+    if (b) return { x: ix, y: iy, z: iz, i: idx(ix, iy, iz), type: b, dist: t };
+    if (tx < ty && tx < tz) { ix += sx; t = tx; tx += tdx; }
+    else if (ty < tz) { iy += sy; t = ty; ty += tdy; }
+    else { iz += sz; t = tz; tz += tdz; }
+  }
+  return null;
+}
+function findTarget() {
+  camera.getWorldDirection(camDir);
+  return voxelRay(camera.position.x, camera.position.y, camera.position.z, camDir.x, camDir.y, camDir.z, REACH);
+}
+
+// ---------- 채굴 ----------
+const damageMap = new Map();    // 블록 인덱스 → 누적 피해
+let swingT = 0, hitDone = false, target = null, fullWarned = 0;
+const hitPoint = new THREE.Vector3();
+function hitBlock(tg) {
+  const b = BLOCKS[tg.type];
+  hitPoint.copy(camera.position).addScaledVector(camDir, Math.max(0.3, tg.dist));
+  if (b.tier > state.power) {
+    toast(`${PICK_NAMES[b.tier]} 곡괭이 이상이 필요해요!`, '#e2675a');
+    sound(120, 0.1, 'noise', 0.15); burst(hitPoint, 0x777777, 3, 1.5);
     return;
   }
-  rock.hp -= damage();
-  rock.shake = 0.25;
-  burst(t.point, rock.ore.id === 'stone' ? 0x8a8580 : rock.ore.color, 7);
-  sound(140 + rock.ore.tier * 30, 0.09, 'noise', 0.3);
-  if (rock.hp <= 0) breakRock(rock);
+  if (bagCount() + pickups.length >= bagCap()) {
+    if (performance.now() - fullWarned > 1500) { toast('🎒 가방이 가득 찼어요! 상점에서 파세요', '#e2675a'); fullWarned = performance.now(); }
+    sound(160, 0.08, 'noise', 0.12);
+    return;
+  }
+  const dmg = (damageMap.get(tg.i) || 0) + damage();
+  const col = ITEMS[b.item].color;
+  burst(hitPoint, col, 6);
+  sound(140 + b.tier * 30, 0.09, 'noise', 0.3);
+  if (dmg >= b.hp) {
+    damageMap.delete(tg.i);
+    breakBlock(tg);
+  } else damageMap.set(tg.i, dmg);
+}
+function breakBlock(tg) {
+  const b = BLOCKS[tg.type], center = new THREE.Vector3(tg.x, tg.y + 0.5, tg.z);
+  burst(center, ITEMS[b.item].color, 16, 4);
+  removeBlock(tg.i);
+  dropItem(b.item, center);
+  sound(90, 0.22, 'noise', 0.4);
+  state.total++;
+  if (b.tier >= 3) toast(`✨ ${ITEMS[b.item].name} 발견!`, hex(ITEMS[b.item].color));
+  worldDirty = true;
+  if (blocksLeft < worldTotal * 0.1) setTimeout(() => regenMountain('⛰️ 산을 거의 다 캤어요! 새 산이 솟아올랐어요'), 1500);
+  save(); updateHud();
 }
 
-function breakRock(rock) {
-  burst(rock.mesh.position, 0x8a8580, 22, 5);
-  if (rock.ore.id !== 'stone') burst(rock.mesh.position, rock.ore.color, 14, 4);
-  dropOre(rock);
-  sound(90, 0.3, 'noise', 0.45);
-  rockGroup.remove(rock.mesh);
-  rock.mesh.geometry.dispose();
-  rocks.splice(rocks.indexOf(rock), 1);
-  state.total++;
-  if (rock.ore.tier >= 4) toast(`✨ ${rock.ore.name} 발견!`, '#' + rock.ore.color.toString(16).padStart(6, '0'));
-  setTimeout(() => { if (rocks.length < MAX_ROCKS) { const r = spawnRock(); r.mesh.scale.setScalar(0.01); r.grow = 0; } }, 4000 + Math.random() * 4000);
-  save(); updateHud();
+// ---------- 자율 모드 ----------
+// 캘 수 있는 노출 블록 중 가깝고 값진 것을 골라 파고, 길을 막는 블록도 파면서 지나감.
+// 가방이 차면 상점에 가서 팔고 곡괭이 → 가방 → 속도 순으로 강화.
+const SELL_SPOT = new THREE.Vector3(SHOP_POS.x, 0, SHOP_POS.z - 3.4);
+const auto = { on: false, mode: 'seek', target: null, mine: false, stuck: 0, lastPos: new THREE.Vector3(), skip: new Set(), mineTime: 0, digAhead: false };
+const autoBtn = document.getElementById('autoBtn'), autoStatus = document.getElementById('autoStatus');
+function setAuto(on) {
+  auto.on = on; auto.mode = 'seek'; auto.target = null; auto.mine = false; auto.skip.clear();
+  autoBtn.classList.toggle('on', on);
+  autoBtn.textContent = on ? '🤖 자율 모드 ON (T)' : '🤖 자율 모드 OFF (T)';
+  autoStatus.textContent = '';
+  toast(on ? '🤖 자율 모드 시작' : '자율 모드 종료', on ? '#a9cdf8' : '#fff');
+}
+autoBtn.addEventListener('mousedown', e => e.stopPropagation());
+autoBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!menuOpen()) setAuto(!auto.on); });
+autoBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); if (!menuOpen()) setAuto(!auto.on); }, { passive: false });
+
+const angleTo = (cur, want) => { let d = want - cur; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
+function chooseBlock() {
+  let best = null, bestScore = -Infinity;
+  const px = player.pos.x, py = player.pos.y, pz = player.pos.z;
+  for (let t = 1; t < BLOCKS.length; t++) {
+    if (BLOCKS[t].tier > state.power) continue;
+    const val = Math.log(ITEMS[BLOCKS[t].item].value + 1) * 5 - BLOCKS[t].hp / damage() * 0.25;
+    for (const i of lists[t]) {
+      if (auto.skip.has(i)) continue;
+      const [x, y, z] = posOf(i);
+      const dy = y - py;
+      if (dy > 2.5) continue;
+      const d = Math.hypot(x - px, (y - py) * 1.5, z - pz);
+      const score = val - d;
+      if (score <= bestScore || !exposed(x, y, z)) continue;
+      bestScore = score; best = i;
+    }
+  }
+  return best;
+}
+function faceTowards(x, y, z, dt) {
+  const eye = player.pos.y + EYE, dx = x - player.pos.x, dz = z - player.pos.z, h = Math.hypot(dx, dz);
+  player.yaw += angleTo(player.yaw, Math.atan2(-dx, -dz)) * Math.min(1, dt * 7);
+  const wantPitch = Math.atan2(y - eye, Math.max(0.3, h));
+  player.pitch += (wantPitch - player.pitch) * Math.min(1, dt * 7);
+  return h;
+}
+// 이동이 막혔을 때: 점프 → 그래도 막히면 앞 블록을 파며 전진
+function handleStuck(dt, goal) {
+  if (player.pos.distanceTo(auto.lastPos) > 0.6) { auto.lastPos.copy(player.pos); auto.stuck = 0; auto.digAhead = false; return; }
+  auto.stuck += dt;
+  if (auto.stuck > 0.7 && player.onGround && !auto.digAhead) player.vel.y = 7;
+  if (auto.stuck > 1.4) auto.digAhead = true;
+  if (auto.stuck > 9 && goal != null) { auto.skip.add(goal); auto.target = null; auto.stuck = 0; auto.digAhead = false; }
+}
+function digAhead(dt) {
+  player.pitch += (-0.25 - player.pitch) * Math.min(1, dt * 6);
+  if (target && BLOCKS[target.type].tier <= state.power) { auto.mine = true; return 0; }
+  player.pitch += (0.35 - player.pitch) * Math.min(1, dt * 3); // 머리 높이 블록 확인
+  return 0.4;
+}
+function autopilot(dt) {
+  auto.mine = false;
+  if (auto.mode === 'seek' && bagCount() + pickups.length >= bagCap()) { auto.mode = 'sell'; auto.target = null; auto.stuck = 0; auto.digAhead = false; }
+  if (auto.mode === 'sell') {
+    autoStatus.textContent = '🛒 가방이 가득! 상점으로 이동 중…';
+    if (auto.digAhead) { handleStuck(dt, null); return digAhead(dt); }
+    const h = faceTowards(SELL_SPOT.x, player.pos.y + EYE - 0.2, SELL_SPOT.z, dt);
+    if (h < 1.4) {
+      sellAll();
+      while (buyPower() || buyBag() || buySpeed()) {}
+      auto.mode = 'seek'; auto.skip.clear();
+      return 0;
+    }
+    handleStuck(dt, null);
+    return 1;
+  }
+  if (auto.target == null || !grid[auto.target]) {
+    auto.target = chooseBlock(); auto.mineTime = 0; auto.stuck = 0; auto.digAhead = false; auto.lastPos.copy(player.pos);
+    if (auto.target == null && auto.skip.size) { auto.skip.clear(); auto.target = chooseBlock(); }
+    if (auto.target == null) { autoStatus.textContent = '🔎 캘 블록을 찾는 중…'; return 0; }
+  }
+  const [bx, by, bz] = posOf(auto.target), b = BLOCKS[grid[auto.target]];
+  const h = faceTowards(bx, by + 0.5, bz, dt);
+  const d3 = Math.hypot(h, by + 0.5 - (player.pos.y + EYE));
+  const near = d3 < REACH - 0.6;
+  autoStatus.textContent = `⛏️ ${b.name} ${near ? '캐는 중' : '찾아가는 중'} · 🎒 ${bagCount()}/${bagCap()}`;
+  if (near) {
+    auto.mineTime += dt;
+    if (target && BLOCKS[target.type].tier <= state.power) auto.mine = true;   // 앞을 가린 블록도 함께 캠
+    else if (target) { auto.skip.add(auto.target); auto.target = null; }
+    if (auto.mineTime > 10) { auto.skip.add(auto.target); auto.target = null; }
+    return target ? 0 : 0.35;
+  }
+  if (auto.digAhead) { handleStuck(dt, auto.target); return digAhead(dt); }
+  handleStuck(dt, auto.target);
+  return 1;
 }
 
 // ---------- 메인 루프 ----------
 const clock = new THREE.Clock();
-const fwd = new THREE.Vector3(), right = new THREE.Vector3();
-let bob = 0;
-
+const fwd = new THREE.Vector3(), right = new THREE.Vector3(), wish = new THREE.Vector3();
+let bob = 0, sparkleT = 0;
 function update(dt) {
-  // 이동
   let mx = 0, mz = 0;
   if (keys.KeyW || keys.ArrowUp) mz += 1;
   if (keys.KeyS || keys.ArrowDown) mz -= 1;
   if (keys.KeyA || keys.ArrowLeft) mx -= 1;
   if (keys.KeyD || keys.ArrowRight) mx += 1;
   mx += joy.x; mz -= joy.y;
+  if (auto.on && (joy.x || joy.y)) setAuto(false);
+  if (auto.on) mz += autopilot(dt);
   const len = Math.hypot(mx, mz); if (len > 1) { mx /= len; mz /= len; }
   fwd.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   right.set(-fwd.z, 0, fwd.x);
-  const speed = keys.ShiftLeft ? 7 : 4.5;
-  const wish = new THREE.Vector3().addScaledVector(fwd, mz).addScaledVector(right, mx).multiplyScalar(speed);
+  const speed = (keys.ShiftLeft ? 7 : 4.5) * (state.turbo ? TURBO_MULT : 1) * (1 + petBonus().speed);
+  wish.set(0, 0, 0).addScaledVector(fwd, mz).addScaledVector(right, mx).multiplyScalar(speed);
   player.vel.x = THREE.MathUtils.lerp(player.vel.x, wish.x, Math.min(1, dt * 12));
   player.vel.z = THREE.MathUtils.lerp(player.vel.z, wish.z, Math.min(1, dt * 12));
-  player.vel.y -= 20 * dt;
-  if (keys.Space && player.onGround) { player.vel.y = 7; player.onGround = false; }
-  player.pos.addScaledVector(player.vel, dt);
+  player.vel.y = Math.max(-30, player.vel.y - 22 * dt);
+  if (keys.Space && player.onGround) { player.vel.y = 7.4; player.onGround = false; }
 
-  // 바위 충돌
-  for (const r of rocks) {
-    const dx = player.pos.x - r.mesh.position.x, dz = player.pos.z - r.mesh.position.z;
-    const d = Math.hypot(dx, dz), min = r.size * 0.95 + 0.35;
-    if (d < min && player.pos.y < r.mesh.position.y + r.size * 0.6) {
-      player.pos.x = r.mesh.position.x + dx / (d || 1) * min;
-      player.pos.z = r.mesh.position.z + dz / (d || 1) * min;
-    }
+  // 축별 이동 + 블록 충돌 (빠를 때 뚫고 지나가지 않도록 나눠서 이동)
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(player.vel.x), Math.abs(player.vel.z), Math.abs(player.vel.y)) * dt / 0.25));
+  for (let s = 0; s < steps; s++) {
+    const sd = dt / steps;
+    if (!moveHorizontal('x', player.vel.x * sd)) player.vel.x = 0;
+    if (!moveHorizontal('z', player.vel.z * sd)) player.vel.z = 0;
+    const oy = player.pos.y;
+    player.pos.y += player.vel.y * sd;
+    if (collides(player.pos.x, player.pos.y, player.pos.z)) {
+      if (player.vel.y < 0) { player.pos.y = Math.ceil(player.pos.y - 0.001); if (collides(player.pos.x, player.pos.y, player.pos.z)) player.pos.y = oy; player.onGround = true; }
+      else player.pos.y = oy;
+      player.vel.y = 0;
+    } else player.onGround = collides(player.pos.x, player.pos.y - 0.05, player.pos.z);
   }
-  // 상점 충돌 (상자)
-  {
-    const lx = player.pos.x - SHOP_POS.x, lz = player.pos.z - SHOP_POS.z;
-    const hx = 2.35, hz = 1.85;
-    if (Math.abs(lx) < hx && Math.abs(lz) < hz) {
-      if (hx - Math.abs(lx) < hz - Math.abs(lz)) player.pos.x = SHOP_POS.x + Math.sign(lx || 1) * hx;
-      else player.pos.z = SHOP_POS.z + Math.sign(lz || 1) * hz;
-    }
-  }
-  // 경계
-  const pr = Math.hypot(player.pos.x, player.pos.z);
-  if (pr > ARENA) { player.pos.x *= ARENA / pr; player.pos.z *= ARENA / pr; }
-  const gh = groundHeight(player.pos.x, player.pos.z);
-  if (player.pos.y <= gh) { player.pos.y = gh; player.vel.y = 0; player.onGround = true; }
+  if (player.pos.y < 0) { player.pos.y = 0; player.vel.y = 0; player.onGround = true; }
+  // 블록 안에 끼었으면 위로 밀어냄
+  let guard = 0; while (collides(player.pos.x, player.pos.y, player.pos.z) && guard++ < 30) player.pos.y += 1;
+  const pr = Math.hypot(player.pos.x, player.pos.z), LIMIT = 48;
+  if (pr > LIMIT) { player.pos.x *= LIMIT / pr; player.pos.z *= LIMIT / pr; }
 
   const moving = player.onGround && Math.hypot(player.vel.x, player.vel.z) > 0.5;
   bob += moving ? dt * 9 : 0;
-  camera.position.set(player.pos.x, player.pos.y + EYE + (moving ? Math.sin(bob) * 0.05 : 0), player.pos.z);
+  stepLift += (0 - stepLift) * Math.min(1, dt * 12);
+  camera.position.set(player.pos.x, player.pos.y + EYE + stepLift + (moving ? Math.sin(bob) * 0.04 : 0), player.pos.z);
   camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
+  camera.updateMatrixWorld();
 
-  // 조준 대상
+  // 조준
   target = findTarget();
   if (target) {
-    const r = target.rock;
-    const locked = r.ore.tier > state.power;
+    const b = BLOCKS[target.type], locked = b.tier > state.power;
+    const dmg = damageMap.get(target.i) || 0;
     targetEl.style.display = 'block';
     targetEl.classList.toggle('locked', locked);
-    tName.textContent = locked ? `${r.ore.name} 🔒 (${PICK_NAMES[r.ore.tier]} 곡괭이 필요)` : `${r.ore.name} · ${r.ore.value}G`;
-    tFill.style.width = `${Math.max(0, r.hp / r.maxHp) * 100}%`;
-  } else targetEl.style.display = 'none';
+    tName.textContent = locked ? `${b.name} 🔒 (${PICK_NAMES[b.tier]} 곡괭이 필요)` : `${b.name} · ${ITEMS[b.item].value}G`;
+    tFill.style.width = `${Math.max(0, 1 - dmg / b.hp) * 100}%`;
+    highlight.position.set(target.x, target.y + 0.5, target.z); highlight.visible = true;
+    crack.position.copy(highlight.position); crack.visible = dmg > 0; crackMat.opacity = Math.min(0.55, dmg / b.hp * 0.6);
+  } else { targetEl.style.display = 'none'; highlight.visible = crack.visible = false; }
 
   // 휘두르기
   const st = swingTime();
-  if (swingT === 0 && mouseDown && !shopOpen) { swingT = 0.0001; hitDone = false; }
+  if (swingT === 0 && (mouseDown || (auto.on && auto.mine)) && !menuOpen()) { swingT = 0.0001; hitDone = false; }
   if (swingT > 0) {
     swingT += dt / st;
-    if (!hitDone && swingT >= 0.45) { hitDone = true; const t = findTarget(); if (t) hitRock(t); else sound(600, 0.05, 'noise', 0.05); }
+    if (!hitDone && swingT >= 0.45) { hitDone = true; const t = findTarget(); if (t) hitBlock(t); else sound(600, 0.05, 'noise', 0.05); }
     if (swingT >= 1) swingT = 0;
   }
   const s = swingT > 0 ? swingT : 0;
-  const arc = s < 0.45 ? -(s / 0.45) * 0.9 : -0.9 + ((s - 0.45) / 0.55) * 0.9; // 뒤로 젖혔다 내려치기
+  const arc = s < 0.45 ? -(s / 0.45) * 0.9 : -0.9 + ((s - 0.45) / 0.55) * 0.9;
   const strike = s < 0.45 ? 0 : Math.sin(((s - 0.45) / 0.55) * Math.PI) * 1.4;
   pick.rotation.x = -0.3 + arc * -0.8 - strike;
-  pickHolder.position.y = -0.42 + (moving ? Math.abs(Math.sin(bob)) * 0.02 : 0);
+  pickHolder.position.y = -0.45 + (moving ? Math.abs(Math.sin(bob)) * 0.02 : 0);
 
-  // 바위 흔들림 & 성장
-  for (const r of rocks) {
-    if (r.shake > 0) {
-      r.shake -= dt;
-      r.mesh.position.set(r.base.x + (Math.random() - 0.5) * 0.08, r.base.y, r.base.z + (Math.random() - 0.5) * 0.08);
-      if (r.shake <= 0) r.mesh.position.copy(r.base);
-    }
-    if (r.grow !== undefined) {
-      r.grow = Math.min(1, r.grow + dt * 1.5);
-      r.mesh.scale.setScalar(THREE.MathUtils.smoothstep(r.grow, 0, 1) || 0.01);
-      if (r.grow >= 1) delete r.grow;
+  // 귀한 광맥 반짝임
+  sparkleT -= dt;
+  if (sparkleT <= 0) {
+    sparkleT = 0.12;
+    for (const t of [T.GOLD, T.EMERALD, T.DIAMOND]) {
+      const list = lists[t]; if (!list.length) continue;
+      const i = list[Math.floor(Math.random() * list.length)];
+      const [x, y, z] = posOf(i);
+      if (!exposed(x, y, z) || Math.hypot(x - player.pos.x, z - player.pos.z) > 18) continue;
+      const m = new THREE.Mesh(sparkleGeo, new THREE.MeshBasicMaterial({ color: ITEMS[BLOCKS[t].item].color }));
+      m.position.set(x + (Math.random() - 0.5) * 1.1, y + 0.5 + (Math.random() - 0.5) * 1.1, z + (Math.random() - 0.5) * 1.1);
+      scene.add(m);
+      particles.push({ m, v: new THREE.Vector3(0, 0.4, 0), life: 0.8, float: true });
     }
   }
 
   // 파티클
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
-    p.v.y -= 14 * dt; p.m.position.addScaledVector(p.v, dt); p.life -= dt;
-    const g = groundHeight(p.m.position.x, p.m.position.z);
-    if (p.m.position.y < g) { p.m.position.y = g; p.v.multiplyScalar(0.4); p.v.y = Math.abs(p.v.y) * 0.3; }
-    if (p.life <= 0) { scene.remove(p.m); p.m.material.dispose(); particles.splice(i, 1); }
+    if (!p.float) p.v.y -= 14 * dt;
+    p.m.position.addScaledVector(p.v, dt); p.life -= dt;
+    if (p.float) p.m.scale.setScalar(Math.max(0.01, Math.sin(p.life / 0.8 * Math.PI)));
+    if (p.life <= 0) { scene.remove(p.m); if (p.float) p.m.material.dispose(); particles.splice(i, 1); }
   }
-
-  // 수집물
+  // 주운 광물이 플레이어에게 빨려옴
   const headPos = new THREE.Vector3(player.pos.x, player.pos.y + 1.0, player.pos.z);
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i];
-    p.t += dt; p.m.rotation.y += dt * 4;
-    if (p.t < 0.5) {
-      p.v.y -= 14 * dt; p.m.position.addScaledVector(p.v, dt);
-      const g = groundHeight(p.m.position.x, p.m.position.z) + 0.15;
-      if (p.m.position.y < g) { p.m.position.y = g; p.v.set(0, 0, 0); }
-    } else {
-      p.m.position.lerp(headPos, Math.min(1, dt * 8));
-      if (p.m.position.distanceTo(headPos) < 0.4) {
-        state.inv[p.ore.id]++;
-        scene.remove(p.m); p.m.geometry.dispose(); p.m.material.dispose();
-        pickups.splice(i, 1);
-        sound(700 + p.ore.tier * 120, 0.08, 'sine', 0.08);
+    p.t += dt; p.m.rotation.y += dt * 4; p.m.rotation.x += dt * 2;
+    if (p.t < 0.4) { p.v.y -= 14 * dt; p.m.position.addScaledVector(p.v, dt); }
+    else {
+      p.m.position.lerp(headPos, Math.min(1, dt * 9));
+      if (p.m.position.distanceTo(headPos) < 0.45 || p.t > 3) {
+        state.inv[p.item]++;
+        state.best = Math.max(state.best || 0, ITEM_ORDER.indexOf(p.item));
+        scene.remove(p.m); p.m.material.dispose(); pickups.splice(i, 1);
+        sound(700 + ITEM_ORDER.indexOf(p.item) * 80, 0.08, 'sine', 0.08);
         updateHud(); save();
       }
     }
   }
+  if (worldDirty && (worldSaveTimer -= dt) <= 0) { worldSaveTimer = 3; saveWorld(); }
+  updatePets(dt);
+  hudTimer -= dt; if (hudTimer <= 0) { hudTimer = 0.5; updateHud(); }
 }
+let hudTimer = 0;
 
 function loop() {
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (playing && !shopOpen) update(dt);
+  if (playing && !menuOpen()) update(dt);
   else { camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z); camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ'); }
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
 loop();
-window.__rockGame = { player, rocks, state }; // 디버그용
-
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+addEventListener('beforeunload', () => { if (worldDirty) saveWorld(); });
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 </script>
 </body>
 </html>
