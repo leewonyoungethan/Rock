@@ -47,6 +47,19 @@
   table.speeds th { color: var(--muted); font-weight: 600; }
   table.speeds td:first-child { text-align: left; }
   table.speeds tr.fox td { color: var(--accent); }
+  .board { margin-top: 12px; text-align: left; background: rgba(255,255,255,.04); border-radius: 8px; padding: 10px 12px; }
+  .board h3 { margin: 0 0 6px; font-size: 15px; display: flex; justify-content: space-between; align-items: baseline; }
+  .board h3 small { font-weight: 500; color: var(--muted); font-size: 12px; }
+  .board ol { margin: 0; padding: 0; list-style: none; font-size: 13.5px; }
+  .board li { display: grid; grid-template-columns: 26px 1fr auto 46px; gap: 6px; padding: 3px 0; border-bottom: 1px solid #232b4d; font-variant-numeric: tabular-nums; }
+  .board li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .board li .sc { color: var(--gold); font-weight: 700; text-align: right; }
+  .board li .nt { color: var(--muted); text-align: right; font-size: 12px; }
+  .board li.me { color: var(--accent); font-weight: 700; }
+  .board .note { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .nickrow { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .nickrow input { flex: 1; min-width: 0; font: inherit; color: var(--text); background: #0f1428; border: 1px solid #3a4475; border-radius: 6px; padding: 7px 9px; }
+  .nickrow input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   button { font: inherit; background: var(--accent); color: #2a1404; border: 0; border-radius: 8px; padding: 11px 16px; font-weight: 800; cursor: pointer; width: 100%; margin-top: 10px; }
   button.ghost { background: transparent; color: var(--text); border: 1px solid #3a4475; }
   #mobile { display: none; }
@@ -100,6 +113,12 @@
     </div>
     <table class="speeds" id="speedTable"></table>
     <p style="margin-top:10px;font-size:12.5px">속도 단위: 칸/초 · 알을 하나 들 때마다 여우가 7%씩 느려져요 (최대 5개).<br>회전이 느린 새는 지그재그로 따돌릴 수 있어요.</p>
+    <div class="board">
+      <h3>🏆 순위 <small>최고 점수 TOP 10</small></h3>
+      <ol id="rank1"></ol>
+      <div class="note" id="rankNote1"></div>
+      <label class="nickrow" for="nick">닉네임 <input id="nick" maxlength="12" autocomplete="off" /></label>
+    </div>
     <button id="startBtn">밤 1 시작</button>
     <div id="best" style="margin-top:10px;font-size:13px;color:var(--muted)"></div>
   </div>
@@ -109,6 +128,11 @@
   <div class="card">
     <h2 id="rTitle"></h2>
     <p id="rBody"></p>
+    <div class="board" id="rBoard" hidden>
+      <h3>🏆 순위 <small>최고 점수 TOP 10</small></h3>
+      <ol id="rank2"></ol>
+      <div class="note" id="rankNote2"></div>
+    </div>
     <button id="rBtn"></button>
     <button id="rMenu" class="ghost">처음으로</button>
   </div>
@@ -568,7 +592,7 @@ function initAudio() {
 }
 $('startBtn').onclick = () => { initAudio(); S.lives = 3; S.score = 0; $('menu').classList.remove('show'); setupNight(1); };
 $('resumeBtn').onclick = () => setPause(false);
-$('quitBtn').onclick = () => { $('pause').classList.remove('show'); toMenu(); };
+$('quitBtn').onclick = () => { $('pause').classList.remove('show'); submitScore(S.score, S.night); toMenu(); };
 $('rMenu').onclick = () => { $('result').classList.remove('show'); toMenu(); };
 function toMenu() { S.mode = 'menu'; showBest(); $('menu').classList.add('show'); }
 
@@ -588,6 +612,79 @@ function updateHUD() {
     `<div class="qbar"><div class="qfill" style="width:${Math.min(100, S.nightScore / S.quota * 100)}%"></div></div>` +
     (chasing ? `<span style="color:var(--bad);font-weight:700">⚠ ${chasing}마리 추격 중!</span>` : `<span style="font-size:12px;color:var(--muted)">총점 ${S.score}</span>`);
 }
+
+// ---------- 순위표 (claude.ai 공유 저장소) ----------
+const LB = { db: null, uid: null, canWrite: false, rows: [], mine: null, loaded: false, note: '순위 불러오는 중…' };
+const nickEl = $('nick');
+(function initNick() {
+  let n = '';
+  try { n = localStorage.getItem('eggsteal-nick') || ''; } catch (e) {}
+  if (!n) { n = '여우' + Math.floor(1000 + Math.random() * 9000); try { localStorage.setItem('eggsteal-nick', n); } catch (e) {} }
+  nickEl.value = n;
+})();
+function getNick() { return (nickEl.value || '').trim().slice(0, 12) || '이름없는 여우'; }
+nickEl.addEventListener('keydown', (e) => e.stopPropagation());
+nickEl.addEventListener('change', async () => {
+  try { localStorage.setItem('eggsteal-nick', getNick()); } catch (e) {}
+  if (LB.db && LB.uid && LB.canWrite && LB.mine && LB.mine.nick !== getNick()) {
+    try { await LB.db.doc('scores/' + LB.uid).update({ nick: getNick() }); } catch (e) {}
+  }
+});
+function renderBoard() {
+  for (const k of ['1', '2']) {
+    const ol = $('rank' + k);
+    ol.replaceChildren();
+    LB.rows.forEach((r, i) => {
+      const li = document.createElement('li');
+      if (r.id === LB.uid) li.className = 'me';
+      const cells = [['', ['🥇', '🥈', '🥉'][i] || (i + 1) + '.'], ['nm', r.nick], ['sc', r.score + '점'], ['nt', '밤 ' + r.night]];
+      for (const [c, t] of cells) { const sp = document.createElement('span'); if (c) sp.className = c; sp.textContent = t; li.append(sp); }
+      ol.append(li);
+    });
+    let note = LB.note;
+    if (!note && !LB.rows.length) note = '아직 기록이 없어요. 첫 번째 도둑이 되어 보세요!';
+    if (!note && LB.mine && !LB.rows.some((r) => r.id === LB.uid)) note = `내 최고 기록: ${LB.mine.score}점`;
+    if (!note && LB.db && !LB.canWrite) note = '이 링크에서는 순위를 볼 수만 있어요 (기록 저장 불가)';
+    $('rankNote' + k).textContent = note;
+  }
+}
+function cleanRow(id, d) {
+  return { id, nick: String(d.nick || '이름없는 여우').slice(0, 12), score: Math.max(0, Math.floor(Number(d.score) || 0)), night: Math.max(1, Math.floor(Number(d.night) || 1)) };
+}
+async function initBoard() {
+  const cl = window.claude;
+  if (!cl || typeof cl.use !== 'function') { LB.note = '순위표는 claude.ai에서 열었을 때 사용할 수 있어요'; renderBoard(); return; }
+  const [db, user] = await Promise.all([cl.use('db'), cl.use('user')]);
+  if (!db) { LB.note = '로그인하면 순위표를 볼 수 있어요'; renderBoard(); return; }
+  LB.db = db;
+  LB.uid = user ? await user.id() : null;
+  LB.canWrite = !!LB.uid;
+  if (user && LB.canWrite) { const c = await user.can('data.write'); if (c === false) LB.canWrite = false; }
+  const timer = setTimeout(() => { if (!LB.loaded) { LB.note = LB.rows.length ? '순위가 최신이 아닐 수 있어요' : '순위를 아직 불러오지 못했어요'; renderBoard(); } }, 10000);
+  db.collection('scores').orderBy('score', 'desc').limit(10).onSnapshot((snap) => {
+    LB.rows = snap.docs.filter((d) => d.exists).map((d) => cleanRow(d.id, d.data()));
+    if (!snap.metadata.fromCache) { LB.loaded = true; clearTimeout(timer); LB.note = ''; }
+    else if (!LB.loaded) LB.note = '';
+    renderBoard();
+  }, () => { clearTimeout(timer); LB.note = '순위를 불러오지 못했어요'; renderBoard(); });
+  if (LB.uid) db.doc('scores/' + LB.uid).onSnapshot((s) => { LB.mine = s.exists ? cleanRow(s.id, s.data()) : null; renderBoard(); }, () => {});
+  renderBoard();
+}
+async function submitScore(score, night) {
+  if (!LB.db || !LB.uid || !LB.canWrite || score <= 0) return '';
+  const prev = LB.mine ? LB.mine.score : 0;
+  if (score <= prev) return `내 최고 기록은 ${prev}점이에요.`;
+  try {
+    await LB.db.doc('scores/' + LB.uid).set({ nick: getNick(), score, night, at: Date.now() });
+    const rank = 1 + LB.rows.filter((r) => r.id !== LB.uid && r.score > score).length;
+    return rank <= 10 ? `🏆 새 기록! 순위 ${rank}위에 올랐어요!` : '🏆 새 개인 기록이 저장됐어요!';
+  } catch (e) {
+    if (e && e.code === 'invalid_argument') { LB.canWrite = false; renderBoard(); }
+    return '순위표에 저장하지 못했어요.';
+  }
+}
+renderBoard();
+initBoard();
 
 // ---------- 게임 로직 ----------
 function sneaking() { return keys.ShiftLeft || keys.ShiftRight || S.sneakToggle; }
@@ -616,6 +713,7 @@ function endNight(early) {
     S.score += bonus;
     sfx.win();
     S.mode = 'result';
+    $('rBoard').hidden = true;
     $('rTitle').textContent = `🌅 밤 ${S.night} 성공!`;
     $('rBody').innerHTML = `훔친 알 <b>${S.nightScore}</b>점 (할당량 ${S.quota})` +
       (bonus ? `<br>일찍 귀가 보너스 +${bonus}` : '') + (S.carry.length ? `<br>굴에 못 가져온 알 ${S.carry.length}개는 놓쳤어요` : '') +
@@ -632,7 +730,10 @@ function gameOver(reason) {
   const record = S.score > best;
   if (record) { best = S.score; try { localStorage.setItem('eggsteal-best', best); } catch (e) {} }
   $('rTitle').textContent = '🥚 게임 오버';
-  $('rBody').innerHTML = `${reason}<br><br>밤 ${S.night}까지 버팀 · 총점 <b>${S.score}</b>${record ? '<br>🎉 최고 기록!' : ''}`;
+  $('rBody').innerHTML = `${reason}<br><br>밤 ${S.night}까지 버팀 · 총점 <b>${S.score}</b>${record ? '<br>🎉 이 기기 최고 기록!' : ''}<br><span id="rSave"></span>`;
+  $('rBoard').hidden = false;
+  const final = S.score, night = S.night;
+  submitScore(final, night).then((msg) => { const el = $('rSave'); if (el) el.textContent = msg; });
   $('rBtn').textContent = '다시 도전';
   $('rBtn').onclick = () => { $('result').classList.remove('show'); S.lives = 3; S.score = 0; setupNight(1); };
   $('result').classList.add('show');
