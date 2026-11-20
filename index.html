@@ -48,7 +48,17 @@
   button:disabled { background: #574b3b; color: #9a8c76; cursor: not-allowed; }
   button.ghost { background: transparent; color: var(--text); border: 1px solid #574b3b; }
   #shop { display: none; }
-  #codeBox[hidden] { display: none; }
+  #codeBox[hidden], #rankBox[hidden] { display: none; }
+  #rankBox { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 16px; }
+  #rankList { list-style: none; margin: 0 0 4px; padding: 0; text-align: left; display: flex; flex-direction: column; gap: 4px; }
+  #rankList li { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: #1b1713; font-size: 14px; font-variant-numeric: tabular-nums; }
+  #rankList li.me { background: #3a2f1c; outline: 1px solid var(--accent); }
+  #rankList .no { font-weight: 800; color: var(--muted); text-align: center; }
+  #rankList li:nth-child(1) .no { color: #ffcb2e; } #rankList li:nth-child(2) .no { color: #d6dde4; } #rankList li:nth-child(3) .no { color: #d0743a; }
+  #rankList .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #rankList .sub { display: block; font-size: 12px; color: var(--muted); }
+  #rankList .gold { font-weight: 700; color: var(--accent); }
+  #rankNote { font-size: 13px; margin: 8px 0 0; }
   .row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; margin: 4px 0; color: var(--text); }
   .hudBtn { pointer-events: auto; width: auto; margin: 0; padding: 8px 12px; font-size: 13px; background: var(--panel); color: var(--text); border: 1px solid #574b3b; }
   #autoBtn.on { background: #3a7bd5; border-color: #6aa3f0; color: #fff; }
@@ -81,10 +91,11 @@
     <div class="btnRow">
       <button id="autoBtn" class="hudBtn" type="button">🤖 자율 모드 OFF (T)</button>
       <button id="codeBtn" class="hudBtn" type="button">🔑 코드 (Enter)</button>
+      <button id="rankBtn" class="hudBtn" type="button">🏆 순위 (R)</button>
     </div>
     <div id="autoStatus"></div>
   </div>
-  <div id="help" class="panel">WASD 이동 · 마우스 시점 (드래그도 가능)<br>클릭(누르고 있기) 블록 캐기 · Space 점프<br>B 상점 · T 자율 모드 · Enter 코드 · Esc 일시정지</div>
+  <div id="help" class="panel">WASD 이동 · 마우스 시점 (드래그도 가능)<br>클릭(누르고 있기) 블록 캐기 · Space 점프<br>B 상점 · T 자율 모드 · R 순위 · Enter 코드 · Esc 일시정지</div>
   <div id="mobile">
     <div id="joy"><div id="knob"></div></div>
     <div class="mbtn" id="mineBtn">캐기</div>
@@ -110,6 +121,16 @@
     <button type="submit">확인</button>
     <button type="button" id="codeClose" class="ghost">닫기 (Esc)</button>
   </form>
+</div>
+
+<div id="rankBox" hidden>
+  <div class="card">
+    <h2>🏆 광부 순위</h2>
+    <p style="margin-top:0">지금까지 상점에서 번 골드 합계 순서예요.</p>
+    <ol id="rankList"></ol>
+    <p id="rankNote"></p>
+    <button type="button" id="rankClose" class="ghost">닫기 (R)</button>
+  </div>
 </div>
 
 <div id="shop">
@@ -163,11 +184,13 @@ const PICK_COLORS = [0x8b5a2b, 0x8a8580, 0xd0743a, 0xd8d8d8, 0xffcb2e, 0x6ff0ff]
 
 // ---------- 저장 ----------
 const SAVE_KEY = 'pickaxePeak.v1', WORLD_KEY = 'pickaxePeak.world.v1';
-const state = { money: 0, power: 0, speed: 0, bag: 0, total: 0, turbo: false, inv: Object.fromEntries(ITEM_ORDER.map(k => [k, 0])) };
+const state = { money: 0, earned: 0, best: 0, power: 0, speed: 0, bag: 0, total: 0, turbo: false, inv: Object.fromEntries(ITEM_ORDER.map(k => [k, 0])) };
 try {
   const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
   if (s) { Object.assign(state, s); state.inv = { ...Object.fromEntries(ITEM_ORDER.map(k => [k, 0])), ...s.inv }; }
 } catch (e) {}
+state.earned = Math.max(state.earned || 0, state.money); // 예전 저장에는 번 돈 합계가 없음
+const rank = { db: null, user: null, myId: null, rows: [], loaded: false, note: '', writing: false, dirty: false, readOnly: false, myPlace: 0 };
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) {} }
 
 const powerCost = () => Math.round(30 * Math.pow(3.2, state.power));
@@ -524,8 +547,8 @@ function moveHorizontal(axis, delta) {
 
 // ---------- 입력 ----------
 const keys = {};
-let mouseDown = false, playing = false, shopOpen = false, codeOpen = false;
-const menuOpen = () => shopOpen || codeOpen;
+let mouseDown = false, playing = false, shopOpen = false, codeOpen = false, rankOpen = false;
+const menuOpen = () => shopOpen || codeOpen || rankOpen;
 const isTouch = matchMedia('(pointer: coarse)').matches;
 const joy = { x: 0, y: 0 };
 const overlay = document.getElementById('overlay'), shopEl = document.getElementById('shop');
@@ -570,6 +593,8 @@ addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDow
 const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 document.addEventListener('keydown', e => {
   if (codeOpen) { if (e.code === 'Escape') closeCode(); return; }
+  if (rankOpen) { if (e.code === 'Escape' || e.code === 'KeyR') closeRank(); return; }
+  if (e.code === 'KeyR' && playing && !shopOpen) { openRank(); return; }
   if ((e.code === 'Enter' || e.code === 'NumpadEnter') && playing && !shopOpen) { e.preventDefault(); openCode(); return; }
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
@@ -646,8 +671,9 @@ function renderShop() {
 }
 function sellAll() {
   const v = inventoryValue(); if (!v) return;
-  state.money += v;
+  state.money += v; state.earned += v;
   for (const k of ITEM_ORDER) state.inv[k] = 0;
+  submitScore();
   sound(880, 0.25, 'triangle', 0.15); toast(`+${v} G 판매!`);
   save(); renderShop(); updateHud();
 }
@@ -709,6 +735,7 @@ function updateHud() {
   statsEl.innerHTML = `💰 <b>${state.money} G</b><br>⛏️ ${PICK_NAMES[state.power]} 곡괭이<br>`
     + `🎒 <span class="${full ? 'full' : ''}">${bagCount()}/${bagCap()}${full ? ' 가득!' : ''}</span><br>`
     + `⛰️ 높이 ${Math.max(0, Math.floor(player.pos.y))}m · 캔 블록 ${state.total}`
+    + (rank.myPlace ? `<br>🏆 내 순위 <b>${rank.myPlace}위</b>` : '')
     + (state.turbo ? '<br>🛡️ <b>방탄유리 질주 ON</b>' : '');
   invEl.innerHTML = ITEM_ORDER.filter(k => state.inv[k] > 0).map(k =>
     `<div class="slot"><span class="dot" style="background:${hex(ITEMS[k].color)}"></span>${ITEMS[k].name} ${state.inv[k]}</div>`).join('')
@@ -744,6 +771,87 @@ document.getElementById('codeClose').onclick = closeCode;
 const codeBtn = document.getElementById('codeBtn');
 codeBtn.addEventListener('mousedown', e => e.stopPropagation());
 codeBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!shopOpen) openCode(); });
+
+// ---------- 순위 (공유 저장소) ----------
+// scores/<내 id> 문서 하나에 내 기록을 쓰고, 모두의 기록을 번 골드 순으로 구독.
+const rankBox = document.getElementById('rankBox'), rankList = document.getElementById('rankList'), rankNote = document.getElementById('rankNote');
+function openRank() {
+  if (!playing) return;
+  rankOpen = true; mouseDown = false;
+  for (const k in keys) keys[k] = false;
+  if (isLocked()) document.exitPointerLock?.();
+  rankBox.hidden = false; renderRank();
+}
+function closeRank() { rankOpen = false; rankBox.hidden = true; tryLock(); }
+document.getElementById('rankClose').onclick = closeRank;
+const rankBtn = document.getElementById('rankBtn');
+rankBtn.addEventListener('mousedown', e => e.stopPropagation());
+rankBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!shopOpen && !codeOpen) openRank(); });
+
+async function renderRank() {
+  const rows = rank.rows;
+  rank.myPlace = rank.myId ? rows.findIndex(r => r.id === rank.myId) + 1 : 0;
+  if (!rankOpen) return;
+  let names = {};
+  if (rank.user && rows.length) { try { names = await rank.user.profiles(rows.map(r => r.id)); } catch (e) {} }
+  rankList.replaceChildren(...rows.map((r, i) => {
+    const li = document.createElement('li');
+    if (r.id === rank.myId) li.className = 'me';
+    const no = document.createElement('span'); no.className = 'no'; no.textContent = i + 1;
+    const who = document.createElement('span'); who.className = 'who';
+    who.textContent = ((names[r.id] && names[r.id].name) || '이름 없는 광부') + (r.id === rank.myId ? ' (나)' : '');
+    const sub = document.createElement('span'); sub.className = 'sub';
+    const bestKey = ITEM_ORDER[Math.max(0, Math.min(ITEM_ORDER.length - 1, r.best | 0))];
+    sub.textContent = `${PICK_NAMES[Math.max(0, Math.min(5, r.pick | 0))]} 곡괭이 · 블록 ${r.blocks | 0}개 · 최고 ${ITEMS[bestKey].name}`;
+    who.appendChild(sub);
+    const gold = document.createElement('span'); gold.className = 'gold'; gold.textContent = `${(r.earned | 0).toLocaleString()} G`;
+    li.append(no, who, gold);
+    return li;
+  }));
+  let note = rank.note;
+  if (!note && rank.loaded && !rows.length) note = '아직 기록이 없어요. 광물을 팔면 첫 번째로 이름이 올라가요!';
+  if (!note && rank.db && !rank.myPlace) note = state.earned > 0 ? '내 기록은 50위 밖이에요.' : '광물을 상점에 팔면 순위에 올라가요.';
+  if (!note && !rank.loaded) note = '순위를 불러오는 중…';
+  if (rank.readOnly) note = (note ? note + ' ' : '') + '이 공유 설정에서는 내 기록을 올릴 수 없어요 (참여자 이상 권한 필요).';
+  rankNote.textContent = note;
+  rankNote.style.color = rank.readOnly ? 'var(--bad)' : 'var(--muted)';
+}
+function myScore() {
+  return { earned: state.earned | 0, blocks: state.total | 0, pick: state.power | 0, best: state.best | 0, updatedAt: Date.now() };
+}
+async function submitScore() {
+  if (!rank.db || !rank.myId || rank.readOnly || state.earned <= 0) return;
+  if (rank.writing) { rank.dirty = true; return; }       // 한 번에 하나씩만 기록
+  rank.writing = true;
+  try { await rank.db.collection('scores').doc(rank.myId).set(myScore()); }
+  catch (e) { if (e && e.code === 'invalid_argument') { rank.readOnly = true; renderRank(); } }
+  rank.writing = false;
+  if (rank.dirty) { rank.dirty = false; submitScore(); }
+}
+(async function initRanking() {
+  const use = window.claude && window.claude.use;
+  if (!use) { rank.note = '순위는 claude.ai에서 이 게임을 열었을 때만 볼 수 있어요.'; return; }
+  const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+  if (!db) { rank.note = '순위를 보려면 claude.ai에 로그인해 주세요.'; renderRank(); return; }
+  rank.db = db; rank.user = user;
+  rank.myId = user ? await user.id() : null;
+  if (user && user.can) { try { if ((await user.can('data.write')) === false) rank.readOnly = true; } catch (e) {} }
+  const timer = setTimeout(() => { if (!rank.loaded) { rank.note = '순위를 아직 불러오지 못했어요. 잠시 후 다시 열어 보세요.'; renderRank(); } }, 10000);
+  let synced = false;
+  db.collection('scores').orderBy('earned', 'desc').limit(50).onSnapshot(snap => {
+    rank.rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!snap.metadata.fromCache) { rank.loaded = true; rank.note = ''; clearTimeout(timer); }
+    renderRank(); updateHud();
+    // 처음 한 번: 이 기기 기록이 저장소보다 앞서 있으면 올림
+    if (rank.loaded && !synced && rank.myId) {
+      synced = true;
+      db.collection('scores').doc(rank.myId).get().then(d => {
+        const mine = d.exists ? d.data() : null;
+        if (!mine || (mine.earned | 0) < (state.earned | 0)) submitScore();
+      }).catch(() => {});
+    }
+  }, err => { clearTimeout(timer); rank.loaded = true; rank.note = '순위를 불러올 수 없어요.'; renderRank(); });
+})();
 
 // ---------- 블록 조준 (복셀 DDA 광선) ----------
 const camDir = new THREE.Vector3();
@@ -1018,6 +1126,7 @@ function update(dt) {
       p.m.position.lerp(headPos, Math.min(1, dt * 9));
       if (p.m.position.distanceTo(headPos) < 0.45 || p.t > 3) {
         state.inv[p.item]++;
+        state.best = Math.max(state.best || 0, ITEM_ORDER.indexOf(p.item));
         scene.remove(p.m); p.m.material.dispose(); pickups.splice(i, 1);
         sound(700 + ITEM_ORDER.indexOf(p.item) * 80, 0.08, 'sine', 0.08);
         updateHud(); save();
