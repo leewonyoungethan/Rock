@@ -46,6 +46,10 @@
   #shop { display: none; }
   .row { display: flex; justify-content: space-between; font-size: 14px; margin: 4px 0; color: var(--text); }
   #mobile { display: none; }
+  #autoBtn { position: absolute; top: 108px; left: 12px; pointer-events: auto; width: auto; margin: 0; padding: 8px 12px;
+    font-size: 13px; background: var(--panel); color: var(--text); border: 1px solid #574b3b; }
+  #autoBtn.on { background: #3a7bd5; border-color: #6aa3f0; color: #fff; }
+  #autoStatus { position: absolute; top: 150px; left: 12px; font-size: 12px; color: #a9cdf8; text-shadow: 0 1px 2px #000; }
   @media (pointer: coarse) {
     #mobile { display: block; }
     #help { display: none; }
@@ -53,6 +57,8 @@
     #knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.3); }
     .mbtn { position: fixed; right: 24px; width: 76px; height: 76px; border-radius: 50%; background: rgba(240,181,74,.75); color: #241a08; font-weight: 800; display: flex; align-items: center; justify-content: center; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
     #mineBtn { bottom: 80px; }
+    #autoBtn { top: auto; bottom: 250px; left: auto; right: 24px; }
+    #autoStatus { top: 108px; }
     #shopBtn { bottom: 170px; width: 56px; height: 56px; right: 34px; font-size: 13px; background: rgba(255,255,255,.25); color: #fff; }
   }
 </style>
@@ -65,7 +71,9 @@
   <div id="stats" class="panel"></div>
   <div id="inv"></div>
   <div id="toast"></div>
-  <div id="help" class="panel">WASD 이동 · 마우스 시점<br>클릭(누르고 있기) 채굴 · 드래그로도 시점 회전<br>Space 점프<br>B 상점 · Esc 일시정지</div>
+  <button id="autoBtn" type="button">🤖 자율 모드 OFF (T)</button>
+  <div id="autoStatus"></div>
+  <div id="help" class="panel">WASD 이동 · 마우스 시점<br>클릭(누르고 있기) 채굴 · 드래그로도 시점 회전<br>Space 점프<br>B 상점 · T 자율 모드 · Esc 일시정지</div>
   <div id="mobile">
     <div id="joy"><div id="knob"></div></div>
     <div class="mbtn" id="mineBtn">캐기</div>
@@ -429,6 +437,8 @@ document.addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (e.code === 'Escape' && playing && !shopOpen && !isLocked()) { pause(); return; }
   if (e.code === 'KeyB' && playing) toggleShop();
+  if (e.code === 'KeyT' && playing && !shopOpen) setAuto(!auto.on);
+  if (auto.on && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) setAuto(false);
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 
@@ -495,28 +505,36 @@ function renderShop() {
   if (swingTime() <= 0.16) { sp.disabled = true; sp.textContent = '속도 최대'; }
   else { sp.disabled = state.money < speedCost(); sp.textContent = `휘두르기 속도 Lv.${state.speed + 1} (${speedCost()} G)`; }
 }
-document.getElementById('sellBtn').onclick = () => {
+function sellAll() {
   const v = inventoryValue();
+  if (!v) return;
   state.money += v;
   for (const o of ORES) state.inv[o.id] = 0;
   sound(880, 0.25, 'triangle', 0.15);
   toast(`+${v} G 판매!`);
   save(); renderShop(); updateHud();
-};
-document.getElementById('upPower').onclick = () => {
-  const c = powerCost(); if (state.money < c) return;
+}
+function buyPower() {
+  if (state.power >= PICK_NAMES.length - 1) return false;
+  const c = powerCost(); if (state.money < c) return false;
   state.money -= c; state.power++;
   headMat.color.setHex(PICK_COLORS[state.power]);
   sound(520, 0.3, 'square', 0.08);
   toast(`${PICK_NAMES[state.power]} 곡괭이 획득!`);
   save(); renderShop(); updateHud();
-};
-document.getElementById('upSpeed').onclick = () => {
-  const c = speedCost(); if (state.money < c) return;
+  return true;
+}
+function buySpeed() {
+  if (swingTime() <= 0.16) return false;
+  const c = speedCost(); if (state.money < c) return false;
   state.money -= c; state.speed++;
   sound(660, 0.2, 'square', 0.08);
   save(); renderShop(); updateHud();
-};
+  return true;
+}
+document.getElementById('sellBtn').onclick = sellAll;
+document.getElementById('upPower').onclick = buyPower;
+document.getElementById('upSpeed').onclick = buySpeed;
 document.getElementById('closeShop').onclick = toggleShop;
 
 // ---------- HUD ----------
@@ -583,6 +601,94 @@ function breakRock(rock) {
   save(); updateHud();
 }
 
+// ---------- 자율 모드 (오토파일럿) ----------
+// 캘 수 있는 바위 중 가까우면서 값진 것을 골라 걸어가 캐고,
+// 가방이 차면 상점에 가서 팔고 강화까지 스스로 합니다.
+const SELL_SPOT = new THREE.Vector3(SHOP_POS.x, 0, SHOP_POS.z - 3.2);
+const BAG_LIMIT = 25;
+const auto = { on: false, mode: 'seek', rock: null, mine: false, stuck: 0, lastDist: Infinity, skip: new Set(), mineTime: 0 };
+const autoBtn = document.getElementById('autoBtn'), autoStatus = document.getElementById('autoStatus');
+function setAuto(on) {
+  auto.on = on; auto.mode = 'seek'; auto.rock = null; auto.mine = false; auto.skip.clear();
+  autoBtn.classList.toggle('on', on);
+  autoBtn.textContent = on ? '🤖 자율 모드 ON (T)' : '🤖 자율 모드 OFF (T)';
+  autoStatus.textContent = '';
+  toast(on ? '🤖 자율 모드 시작' : '자율 모드 종료', on ? '#a9cdf8' : '#fff');
+}
+autoBtn.addEventListener('mousedown', e => e.stopPropagation());
+autoBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) startPlay(); if (!shopOpen) setAuto(!auto.on); });
+autoBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); if (!shopOpen) setAuto(!auto.on); }, { passive: false });
+
+const bagCount = () => ORES.reduce((n, o) => n + state.inv[o.id], 0);
+function angleTo(cur, want) { let d = want - cur; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; }
+function chooseRock() {
+  let best = null, bestScore = -Infinity;
+  for (const r of rocks) {
+    if (r.ore.tier > state.power || r.grow !== undefined || auto.skip.has(r)) continue;
+    const d = Math.hypot(r.mesh.position.x - player.pos.x, r.mesh.position.z - player.pos.z);
+    const score = Math.log(r.ore.value + 1) * 6 - d - r.hp / damage() * 0.4;
+    if (score > bestScore) { bestScore = score; best = r; }
+  }
+  return best;
+}
+// 목표 지점을 향해 몸을 돌리고 전진 입력을 돌려줌 (앞길에 바위가 있으면 옆으로 비켜감)
+function steerTo(x, z, stopDist, dt, ignore) {
+  const dx = x - player.pos.x, dz = z - player.pos.z, d = Math.hypot(dx, dz);
+  let want = Math.atan2(-dx, -dz);
+  for (const r of rocks) {
+    if (r === ignore) continue;
+    const rx = r.mesh.position.x - player.pos.x, rz = r.mesh.position.z - player.pos.z, rd = Math.hypot(rx, rz);
+    if (rd > 3.2 || rd > d) continue;
+    const a = angleTo(want, Math.atan2(-rx, -rz));
+    if (Math.abs(a) < 0.6) want += (a > 0 ? -1 : 1) * (0.6 - Math.abs(a)) * 1.6;
+  }
+  player.yaw += angleTo(player.yaw, want) * Math.min(1, dt * 6);
+  return { forward: d > stopDist ? (Math.abs(angleTo(player.yaw, want)) < 1.2 ? 1 : 0.2) : 0, dist: d };
+}
+function autopilot(dt) {
+  auto.mine = false;
+  // 가방이 가득 차면 상점으로
+  if (auto.mode === 'seek' && bagCount() >= BAG_LIMIT) { auto.mode = 'sell'; auto.rock = null; }
+  if (auto.mode === 'sell') {
+    autoStatus.textContent = '🛒 상점으로 이동 중…';
+    const s = steerTo(SELL_SPOT.x, SELL_SPOT.z, 1.2, dt);
+    player.pitch += (-0.1 - player.pitch) * Math.min(1, dt * 4);
+    if (s.dist <= 1.3) {
+      sellAll();
+      // 곡괭이 강화를 우선, 남는 돈으로 속도 강화
+      while (buyPower() || buySpeed()) {}
+      auto.mode = 'seek'; auto.skip.clear();
+    }
+    return { mx: 0, mz: s.forward };
+  }
+  if (!auto.rock || !rocks.includes(auto.rock)) {
+    auto.rock = chooseRock(); auto.stuck = 0; auto.lastDist = Infinity; auto.mineTime = 0;
+    if (!auto.rock && auto.skip.size) { auto.skip.clear(); auto.rock = chooseRock(); }
+    if (!auto.rock) { autoStatus.textContent = '🔎 캘 바위를 찾는 중…'; return { mx: 0, mz: 0 }; }
+  }
+  const r = auto.rock, rp = r.mesh.position;
+  const reach = r.size + 1.3;
+  const s = steerTo(rp.x, rp.z, reach, dt, r);
+  // 바위 중심을 내려다보도록 시선 조절
+  const eyeY = player.pos.y + EYE;
+  const wantPitch = Math.atan2(rp.y - eyeY, Math.max(0.5, s.dist));
+  player.pitch += (wantPitch - player.pitch) * Math.min(1, dt * 6);
+  autoStatus.textContent = `⛏️ ${r.ore.name} ${s.dist > reach + 0.1 ? '찾아가는 중' : '캐는 중'} · 가방 ${bagCount()}/${BAG_LIMIT}`;
+  if (s.dist <= reach + 0.1) {
+    auto.mineTime += dt;
+    const t = findTarget();
+    auto.mine = !!t;
+    if (t && t.rock !== r && t.rock.ore.tier <= state.power) auto.rock = t.rock; // 앞을 막은 바위도 캐기
+    if (!t) { player.pitch -= dt * 0.6; } // 조준이 안 맞으면 살짝 아래로
+    if (auto.mineTime > 12) { auto.skip.add(r); auto.rock = null; }
+    return { mx: 0, mz: t ? 0 : 0.3 };
+  }
+  // 막혀서 안 가까워지면 다른 바위로
+  if (s.dist < auto.lastDist - 0.05) { auto.lastDist = s.dist; auto.stuck = 0; }
+  else if ((auto.stuck += dt) > 2.5) { auto.skip.add(r); auto.rock = null; if (player.onGround) player.vel.y = 7; }
+  return { mx: 0, mz: s.forward };
+}
+
 // ---------- 메인 루프 ----------
 const clock = new THREE.Clock();
 const fwd = new THREE.Vector3(), right = new THREE.Vector3();
@@ -596,6 +702,8 @@ function update(dt) {
   if (keys.KeyA || keys.ArrowLeft) mx -= 1;
   if (keys.KeyD || keys.ArrowRight) mx += 1;
   mx += joy.x; mz -= joy.y;
+  if (auto.on && (joy.x || joy.y)) setAuto(false);
+  if (auto.on) { const a = autopilot(dt); mx += a.mx; mz += a.mz; }
   const len = Math.hypot(mx, mz); if (len > 1) { mx /= len; mz /= len; }
   fwd.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   right.set(-fwd.z, 0, fwd.x);
@@ -649,7 +757,7 @@ function update(dt) {
 
   // 휘두르기
   const st = swingTime();
-  if (swingT === 0 && mouseDown && !shopOpen) { swingT = 0.0001; hitDone = false; }
+  if (swingT === 0 && (mouseDown || (auto.on && auto.mine)) && !shopOpen) { swingT = 0.0001; hitDone = false; }
   if (swingT > 0) {
     swingT += dt / st;
     if (!hitDone && swingT >= 0.45) { hitDone = true; const t = findTarget(); if (t) hitRock(t); else sound(600, 0.05, 'noise', 0.05); }
