@@ -112,7 +112,7 @@
     </div>
     <div id="autoStatus"></div>
   </div>
-  <div id="help" class="panel">WASD 이동 · 마우스 시점 (드래그도 가능)<br>클릭(누르고 있기) 블록 캐기 · Space 점프<br>B 상점 · P 펫 · T 자율 모드 · R 순위<br>Enter 코드 · Esc 일시정지</div>
+  <div id="help" class="panel">WASD 이동 · 마우스를 움직여 시점 회전<br>화면 양 끝에 커서를 두면 계속 회전 · 오른쪽 버튼 누르고 있기 = 앞으로 걷기<br>왼쪽 클릭(누르고 있기) 블록 캐기 · Space 점프<br>B 상점 · P 펫 · T 자율 모드 · R 순위<br>Enter 코드 · Esc 일시정지</div>
   <div id="mobile">
     <div id="joy"><div id="knob"></div></div>
     <div class="mbtn" id="mineBtn">캐기</div>
@@ -643,19 +643,35 @@ document.addEventListener('pointerlockchange', () => {
   if (wasLocked && playing && !menuOpen() && !isTouch) pause();
   wasLocked = false;
 });
-let dragging = false;
-renderer.domElement.addEventListener('mousedown', e => { dragging = true; if (e.button === 0) mouseDown = true; e.preventDefault(); });
-document.addEventListener('mouseup', e => { dragging = false; if (e.button === 0) mouseDown = false; });
+// 마우스: 움직이기만 해도 시점 회전 (커서가 잡히지 않는 환경 포함)
+//  - 화면 왼쪽/오른쪽 가장자리에 커서를 두면 계속 돌아감
+//  - 오른쪽 버튼을 누르고 있으면 앞으로 걸어감
+const mouse = { x: 0.5, y: 0.5, inside: false, walk: false };
+renderer.domElement.addEventListener('mousedown', e => {
+  if (e.button === 0) mouseDown = true;
+  if (e.button === 2) { mouse.walk = true; if (auto.on) setAuto(false); }
+  e.preventDefault();
+});
+document.addEventListener('mouseup', e => { if (e.button === 0) mouseDown = false; if (e.button === 2) mouse.walk = false; });
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+renderer.domElement.addEventListener('mouseenter', () => { mouse.inside = true; });
+renderer.domElement.addEventListener('mouseleave', () => { mouse.inside = false; mouse.walk = false; });
 document.addEventListener('mousemove', e => {
-  if (!playing || menuOpen()) return;
-  if (!isLocked() && !dragging) return;
+  mouse.x = e.clientX / innerWidth; mouse.y = e.clientY / innerHeight;
+  if (!playing || menuOpen() || isTouch) return;
   if (Math.abs(e.movementX) > 250 || Math.abs(e.movementY) > 250) return;
-  const k = isLocked() ? 0.0022 : 0.005;
+  const k = isLocked() ? 0.0022 : 0.004;
   player.yaw -= e.movementX * k;
   player.pitch = THREE.MathUtils.clamp(player.pitch - e.movementY * k, -1.5, 1.5);
 });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; dragging = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; mouse.walk = false; mouse.inside = false; });
+function edgeTurn(dt) {
+  if (isLocked() || isTouch || !mouse.inside) return;
+  if (mouse.y < 0.25 || mouse.y > 0.85) return;        // 위아래 버튼 영역에서는 돌지 않음
+  const EDGE = 0.1, SPEED = 2.4;                        // 가장자리 10%, 최대 초당 2.4라디안
+  if (mouse.x < EDGE) player.yaw += SPEED * dt * (EDGE - mouse.x) / EDGE;
+  else if (mouse.x > 1 - EDGE) player.yaw -= SPEED * dt * (mouse.x - (1 - EDGE)) / EDGE;
+}
 const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 document.addEventListener('keydown', e => {
   if (codeOpen) { if (e.code === 'Escape') closeCode(); return; }
@@ -1270,6 +1286,8 @@ function update(dt) {
   if (keys.KeyS || keys.ArrowDown) mz -= 1;
   if (keys.KeyA || keys.ArrowLeft) mx -= 1;
   if (keys.KeyD || keys.ArrowRight) mx += 1;
+  if (mouse.walk) mz += 1;
+  edgeTurn(dt);
   mx += joy.x; mz -= joy.y;
   if (auto.on && (joy.x || joy.y)) setAuto(false);
   if (auto.on) mz += autopilot(dt);
