@@ -118,6 +118,24 @@
   .stat .v { font-family: var(--display); font-size: 24px; font-variant-numeric: tabular-nums; }
   .stat.wide { grid-column: 1 / -1; }
   .stat.wide .v { font-size: 38px; color: var(--gold); }
+  .board { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .board h3 { font-family: var(--display); font-weight: 400; font-size: 20px; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .board h3 small { font-family: var(--body); font-size: 12px; color: var(--muted); }
+  .board ol { list-style: none; margin: 0; padding: 0; max-height: 236px; overflow-y: auto; display: grid; gap: 2px; }
+  .board li { display: grid; grid-template-columns: 30px 1fr auto auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 6px; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .board li:nth-child(odd) { background: rgba(255,255,255,.03); }
+  .board li.me { background: rgba(255,198,52,.13); outline: 1px solid rgba(255,198,52,.4); }
+  .board .rk { font-family: var(--display); color: var(--muted); text-align: center; }
+  .board li:nth-child(1) .rk { color: var(--gold); } .board li:nth-child(2) .rk { color: #d5dbe8; } .board li:nth-child(3) .rk { color: #e09a5b; }
+  .board .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .board .st { color: var(--muted); font-size: 12px; }
+  .board .sc { font-family: var(--display); color: var(--gold); }
+  .board .msg { font-size: 13px; color: var(--muted); padding: 6px 2px; line-height: 1.5; }
+  .nickRow { display: flex; gap: 8px; align-items: center; margin: 0 0 12px; }
+  .nickRow label { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .nickRow input { flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--ink); background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; }
+  .nickRow input:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+  #submitMsg { font-size: 13px; color: var(--good); margin: -8px 0 14px; min-height: 1em; }
   #newBest { color: var(--good); font-size: 14px; margin-left: 6px; }
   body.touch .kbOnly { display: none; }
   body:not(.touch) .touchOnly { display: none; }
@@ -194,8 +212,10 @@
       <li>노란 화살표가 가리키는 <b>금고</b>를 털면 큰돈, 대신 수배 레벨이 오릅니다.</li>
       <li>경찰 시야에서 6초 동안 벗어나면 수배 레벨이 내려갑니다. 레벨이 높을수록 점수 배율도 높습니다.</li>
     </ul>
+    <div class="nickRow"><label for="nick">닉네임</label><input id="nick" maxlength="12" placeholder="순위표에 보일 이름" autocomplete="off"></div>
     <button class="go" id="startBtn" type="button">출발!</button>
     <div class="best" id="bestStart"></div>
+    <div class="board"><h3>순위표 <small>최고 점수 기준</small></h3><ol class="boardList"></ol></div>
   </div>
 </div>
 
@@ -220,8 +240,10 @@
       <div class="stat"><div class="lbl">격파한 경찰차</div><div class="v" id="fWreck">0</div></div>
       <div class="stat"><div class="lbl">최고 수배 레벨</div><div class="v" id="fStars">★1</div></div>
     </div>
+    <div id="submitMsg"></div>
     <button class="go" id="againBtn" type="button">한 번 더! <span class="kbOnly" style="font-size:14px;opacity:.7">(R)</span></button>
     <div class="best" id="bestOver"></div>
+    <div class="board"><h3>순위표 <small>최고 점수 기준</small></h3><ol class="boardList"></ol></div>
   </div>
 </div>
 
@@ -763,6 +785,7 @@ function showOver() {
   $('bestOver').textContent = '최고 기록 ' + fmtNum(Math.max(best, G.score));
   $('overScreen').hidden = false;
   $('againBtn').focus();
+  submitScore();
 }
 $('startBtn').onclick = startGame;
 $('againBtn').onclick = startGame;
@@ -1395,6 +1418,77 @@ function updateHud(dt) {
   hudEls.hurt.style.opacity = Math.max(G.hurt, player.hp < 25 && !G.over ? 0.35 + Math.sin(performance.now() / 160) * 0.2 : 0);
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) hudEls.toast.className = ''; }
 }
+
+// ---------- shared leaderboard ----------
+const LB = { db: null, uid: null, canWrite: null, rows: null, state: 'loading', myBest: 0 };
+const nickEl = $('nick');
+nickEl.value = store.get('chase_nick') || '';
+nickEl.addEventListener('input', () => store.set('chase_nick', nickEl.value.trim()));
+nickEl.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') startGame(); });
+function myNick() { return (nickEl.value.trim() || '익명 도둑').slice(0, 12); }
+function renderBoard() {
+  for (const ol of document.querySelectorAll('.boardList')) {
+    ol.textContent = '';
+    const msg = t => { const li = document.createElement('div'); li.className = 'msg'; li.textContent = t; ol.appendChild(li); };
+    if (LB.state === 'off') { msg('순위표는 claude.ai에서 이 게임을 열었을 때 보입니다.'); continue; }
+    if (LB.state === 'loading') { msg('순위표를 불러오는 중…'); continue; }
+    if (LB.state === 'error') { msg('순위표를 불러오지 못했습니다. 잠시 후 다시 열어 보세요.'); continue; }
+    if (!LB.rows.length) { msg('아직 기록이 없습니다. 첫 번째 주인공이 되어 보세요!'); }
+    LB.rows.forEach((r, i) => {
+      const li = document.createElement('li');
+      if (r.id === LB.uid) li.className = 'me';
+      const rk = document.createElement('span'); rk.className = 'rk'; rk.textContent = i + 1;
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = (r.nick || '익명 도둑') + (r.id === LB.uid ? ' (나)' : '');
+      const st = document.createElement('span'); st.className = 'st'; st.textContent = '★' + (r.stars || 1) + ' · ' + fmtTime(r.time || 0);
+      const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = fmtNum(r.best || 0);
+      li.append(rk, nm, st, sc); ol.appendChild(li);
+    });
+    if (LB.canWrite === false) msg('보기 전용입니다. 기록을 올리려면 이 게임의 참여자(Contributor) 권한이 필요합니다.');
+  }
+}
+async function initBoard() {
+  renderBoard();
+  const cl = window.claude;
+  if (!cl || !cl.use) { LB.state = 'off'; renderBoard(); return; }
+  const [db, user] = await Promise.all([cl.use('db').catch(() => null), cl.use('user').catch(() => null)]);
+  if (!db) { LB.state = 'off'; renderBoard(); return; }
+  LB.db = db;
+  if (user) {
+    try { LB.uid = await user.id(); } catch (e) {}
+    try { LB.canWrite = await user.can('data.write'); } catch (e) {}
+    if (!nickEl.value) { try { const me = await user.me(); if (me && me.name) { nickEl.value = me.name.slice(0, 12); } } catch (e) {} }
+  }
+  if (!LB.uid) LB.canWrite = false;
+  const timer = setTimeout(() => { if (LB.state === 'loading') { LB.state = 'error'; renderBoard(); } }, 10000);
+  db.collection('scores').orderBy('best', 'desc').limit(30).onSnapshot(snap => {
+    clearTimeout(timer);
+    LB.rows = snap.docs.filter(d => d.exists).map(d => Object.assign({ id: d.id }, d.data()));
+    const mine = LB.rows.find(r => r.id === LB.uid);
+    if (mine) LB.myBest = Math.max(LB.myBest, mine.best || 0);
+    LB.state = 'ok'; renderBoard();
+  }, () => { clearTimeout(timer); LB.state = 'error'; renderBoard(); });
+  if (LB.uid) {
+    try { const d = await db.doc('scores/' + LB.uid).get(); if (d.exists) LB.myBest = Math.max(LB.myBest, d.data().best || 0); } catch (e) {}
+  }
+}
+async function submitScore() {
+  const el = $('submitMsg'); el.textContent = '';
+  if (!LB.db || !LB.uid || LB.canWrite === false) return;
+  const score = Math.round(G.score);
+  if (score <= 0) return;
+  if (score <= LB.myBest) { el.textContent = `내 순위표 기록은 ${fmtNum(LB.myBest)}점입니다.`; return; }
+  const doc = { nick: myNick(), best: score, cash: Math.round(G.cash), time: Math.round(G.t), wrecked: G.wrecked, stars: G.maxStars, at: Date.now() };
+  try {
+    await LB.db.doc('scores/' + LB.uid).set(doc);
+    LB.myBest = score;
+    const rank = LB.rows ? LB.rows.filter(r => r.id !== LB.uid && (r.best || 0) > score).length + 1 : null;
+    el.textContent = rank ? `순위표에 올라갔습니다! 현재 ${rank}위` : '순위표에 올라갔습니다!';
+  } catch (e) {
+    if (e && e.code === 'invalid_argument') { LB.canWrite = false; renderBoard(); }
+    else el.textContent = '기록을 올리지 못했습니다. 다음 판에 다시 시도합니다.';
+  }
+}
+initBoard();
 
 // ---------- loop ----------
 let last = performance.now();
