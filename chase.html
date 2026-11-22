@@ -1420,7 +1420,7 @@ function updateHud(dt) {
 }
 
 // ---------- shared leaderboard ----------
-const LB = { db: null, uid: null, canWrite: null, rows: null, state: 'loading', myBest: 0 };
+const LB = { save: null, uid: null, canWrite: null, rows: null, state: 'loading', myBest: 0 };
 const nickEl = $('nick');
 nickEl.value = store.get('chase_nick') || '';
 nickEl.addEventListener('input', () => store.set('chase_nick', nickEl.value.trim()));
@@ -1430,7 +1430,7 @@ function renderBoard() {
   for (const ol of document.querySelectorAll('.boardList')) {
     ol.textContent = '';
     const msg = t => { const li = document.createElement('div'); li.className = 'msg'; li.textContent = t; ol.appendChild(li); };
-    if (LB.state === 'off') { msg('순위표는 claude.ai에서 이 게임을 열었을 때 보입니다.'); continue; }
+    if (LB.state === 'off') { msg('순위표 서버가 아직 연결되지 않았습니다.'); continue; }
     if (LB.state === 'loading') { msg('순위표를 불러오는 중…'); continue; }
     if (LB.state === 'error') { msg('순위표를 불러오지 못했습니다. 잠시 후 다시 열어 보세요.'); continue; }
     if (!LB.rows.length) { msg('아직 기록이 없습니다. 첫 번째 주인공이 되어 보세요!'); }
@@ -1446,40 +1446,75 @@ function renderBoard() {
     if (LB.canWrite === false) msg('보기 전용입니다. 기록을 올리려면 이 게임의 참여자(Contributor) 권한이 필요합니다.');
   }
 }
-async function initBoard() {
-  renderBoard();
-  const cl = window.claude;
-  if (!cl || !cl.use) { LB.state = 'off'; renderBoard(); return; }
+// Firebase project for the public (GitHub Pages) version. Paste the web app config here; see FIREBASE_SETUP.md.
+const FIREBASE_CONFIG = null;
+const FB_VER = '10.14.1';
+function loadScript(src) {
+  return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); });
+}
+function watchLoad() {
+  return setTimeout(() => { if (LB.state === 'loading') { LB.state = 'error'; renderBoard(); } }, 10000);
+}
+async function initClaudeBoard(cl) {
   const [db, user] = await Promise.all([cl.use('db').catch(() => null), cl.use('user').catch(() => null)]);
   if (!db) { LB.state = 'off'; renderBoard(); return; }
-  LB.db = db;
   if (user) {
     try { LB.uid = await user.id(); } catch (e) {}
     try { LB.canWrite = await user.can('data.write'); } catch (e) {}
-    if (!nickEl.value) { try { const me = await user.me(); if (me && me.name) { nickEl.value = me.name.slice(0, 12); } } catch (e) {} }
+    if (!nickEl.value) { try { const me = await user.me(); if (me && me.name) nickEl.value = me.name.slice(0, 12); } catch (e) {} }
   }
   if (!LB.uid) LB.canWrite = false;
-  const timer = setTimeout(() => { if (LB.state === 'loading') { LB.state = 'error'; renderBoard(); } }, 10000);
+  const timer = watchLoad();
   db.collection('scores').orderBy('best', 'desc').limit(30).onSnapshot(snap => {
     clearTimeout(timer);
-    LB.rows = snap.docs.filter(d => d.exists).map(d => Object.assign({ id: d.id }, d.data()));
-    const mine = LB.rows.find(r => r.id === LB.uid);
-    if (mine) LB.myBest = Math.max(LB.myBest, mine.best || 0);
-    LB.state = 'ok'; renderBoard();
+    gotRows(snap.docs.filter(d => d.exists).map(d => Object.assign({ id: d.id }, d.data())));
   }, () => { clearTimeout(timer); LB.state = 'error'; renderBoard(); });
-  if (LB.uid) {
-    try { const d = await db.doc('scores/' + LB.uid).get(); if (d.exists) LB.myBest = Math.max(LB.myBest, d.data().best || 0); } catch (e) {}
+  if (LB.uid) { try { const d = await db.doc('scores/' + LB.uid).get(); if (d.exists) LB.myBest = Math.max(LB.myBest, d.data().best || 0); } catch (e) {} }
+  LB.save = doc => db.doc('scores/' + LB.uid).set(doc);
+}
+async function initFirebaseBoard(cfg) {
+  const timer = watchLoad();
+  try {
+    const base = `https://cdn.jsdelivr.net/npm/firebase@${FB_VER}/`;
+    await loadScript(base + 'firebase-app-compat.js');
+    await Promise.all([loadScript(base + 'firebase-auth-compat.js'), loadScript(base + 'firebase-firestore-compat.js')]);
+    const fb = window.firebase;
+    const app = fb.apps.length ? fb.app() : fb.initializeApp(cfg);
+    const cred = await app.auth().signInAnonymously();
+    LB.uid = cred.user.uid; LB.canWrite = true;
+    const col = app.firestore().collection('chase_scores');
+    col.orderBy('best', 'desc').limit(30).onSnapshot(snap => {
+      clearTimeout(timer);
+      gotRows(snap.docs.map(d => Object.assign({ id: d.id }, d.data())));
+    }, () => { clearTimeout(timer); LB.state = 'error'; renderBoard(); });
+    try { const d = await col.doc(LB.uid).get(); if (d.exists) LB.myBest = Math.max(LB.myBest, d.data().best || 0); } catch (e) {}
+    LB.save = doc => col.doc(LB.uid).set(Object.assign({}, doc, { at: fb.firestore.FieldValue.serverTimestamp() }));
+  } catch (e) {
+    clearTimeout(timer); LB.state = 'error'; renderBoard();
   }
+}
+function gotRows(rows) {
+  LB.rows = rows;
+  const mine = rows.find(r => r.id === LB.uid);
+  if (mine) LB.myBest = Math.max(LB.myBest, mine.best || 0);
+  LB.state = 'ok'; renderBoard();
+}
+async function initBoard() {
+  renderBoard();
+  const cl = window.claude;
+  if (cl && cl.use) return initClaudeBoard(cl);
+  if (FIREBASE_CONFIG) return initFirebaseBoard(FIREBASE_CONFIG);
+  LB.state = 'off'; renderBoard();
 }
 async function submitScore() {
   const el = $('submitMsg'); el.textContent = '';
-  if (!LB.db || !LB.uid || LB.canWrite === false) return;
+  if (!LB.save || !LB.uid || LB.canWrite === false) return;
   const score = Math.round(G.score);
-  if (score <= 0) return;
+  if (score <= 0 || G.t < 5) return;
   if (score <= LB.myBest) { el.textContent = `내 순위표 기록은 ${fmtNum(LB.myBest)}점입니다.`; return; }
   const doc = { nick: myNick(), best: score, cash: Math.round(G.cash), time: Math.round(G.t), wrecked: G.wrecked, stars: G.maxStars, at: Date.now() };
   try {
-    await LB.db.doc('scores/' + LB.uid).set(doc);
+    await LB.save(doc);
     LB.myBest = score;
     const rank = LB.rows ? LB.rows.filter(r => r.id !== LB.uid && (r.best || 0) > score).length + 1 : null;
     el.textContent = rank ? `순위표에 올라갔습니다! 현재 ${rank}위` : '순위표에 올라갔습니다!';
