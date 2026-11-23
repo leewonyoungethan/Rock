@@ -81,14 +81,22 @@
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
     padding-left: max(14px, env(safe-area-inset-left, 0px)); padding-right: max(14px, env(safe-area-inset-right, 0px)); pointer-events: none; }
   body.touch #touch { display: flex; }
-  #touch .cluster { display: flex; gap: 10px; pointer-events: auto; align-items: flex-end; }
-  #touch .grid { display: grid; grid-template-columns: repeat(2, auto); gap: 10px; pointer-events: auto; }
+  #touch .grid { display: flex; flex-direction: column; gap: 14px; pointer-events: auto; align-items: flex-end; }
+  #stickZone { position: fixed; left: 0; bottom: 0; width: 62%; top: calc(env(safe-area-inset-top, 0px) + 96px); pointer-events: auto; touch-action: none; }
+  #stickBase { position: absolute; width: 140px; height: 140px; margin: -70px 0 0 -70px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.22); background: radial-gradient(circle, rgba(255,255,255,.07), rgba(10,14,30,.45) 70%); opacity: .5; transition: opacity .15s; }
+  #stickBase.active { opacity: 1; transition: none; }
+  #stickBase::after { content: ""; position: absolute; inset: 44px; border-radius: 50%; border: 1px dashed rgba(255,255,255,.18); }
+  #stickKnob { position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #ffe08a, var(--gold) 60%, #c78f00); box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+  #stickHint { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 8px); font-size: 12px; color: var(--muted); white-space: nowrap; }
+  #stickBase.active #stickHint { display: none; }
   .tb { width: 74px; height: 74px; border-radius: 50%; border: 2px solid rgba(255,255,255,.22); background: rgba(10,14,30,.55);
     font-family: var(--display); font-size: 15px; display: grid; place-items: center; touch-action: none; }
   .tb.big { width: 88px; height: 88px; font-size: 18px; }
   .tb.on { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.6); }
   .tb.gas { border-color: rgba(75,227,160,.6); } .tb.nos { border-color: rgba(79,201,255,.7); } .tb.hb { border-color: rgba(255,198,52,.6); }
-  body.touch #meters { bottom: calc(env(safe-area-inset-bottom, 0px) + 200px); width: 190px; padding: 8px 10px; }
+  body.touch #meters { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 104px); width: 170px; padding: 8px 10px; }
   body.touch #mini { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 118px); width: 112px; height: 112px; }
   body.touch #combo { bottom: 42%; }
 
@@ -182,15 +190,11 @@
 </div>
 
 <div id="touch">
-  <div class="cluster">
-    <button class="tb big" data-k="left" type="button" aria-label="왼쪽">◀</button>
-    <button class="tb big" data-k="right" type="button" aria-label="오른쪽">▶</button>
-  </div>
+  <div id="stickZone"><div id="stickBase"><div id="stickKnob"></div><div id="stickHint">밀어서 운전</div></div></div>
+  <span></span>
   <div class="grid">
     <button class="tb nos" data-k="boost" type="button">부스터</button>
-    <button class="tb hb" data-k="hb" type="button">드리프트</button>
-    <button class="tb" data-k="brake" type="button">후진</button>
-    <button class="tb big gas" data-k="gas" type="button">가속</button>
+    <button class="tb big hb" data-k="hb" type="button">드리프트</button>
   </div>
 </div>
 
@@ -204,6 +208,11 @@
       <kbd>Space</kbd><span>핸드브레이크 드리프트</span>
       <kbd>Shift</kbd><span>부스터 (니트로)</span>
       <kbd>P</kbd><span>일시정지 &nbsp; <kbd>M</kbd> 소리</span>
+    </div>
+    <div class="keys touchOnly">
+      <kbd>조이스틱</kbd><span>왼쪽 화면 어디든 누르고 가고 싶은 방향으로 미세요. 많이 밀수록 빨라지고, 반대로 당기면 후진하며 돕니다.</span>
+      <kbd>드리프트</kbd><span>누른 채 코너를 돌면 미끄러지며 점수와 부스터가 쌓입니다.</span>
+      <kbd>부스터</kbd><span>누르는 동안 니트로 가속</span>
     </div>
     <ul class="tips">
       <li><b>멈추면 끝</b>: 경찰차에 둘러싸여 느려지면 체포 게이지가 찹니다.</li>
@@ -554,7 +563,7 @@ function driveCar(c, inp, dt, P) {
   const fx = Math.cos(c.a), fy = Math.sin(c.a), rx = -fy, ry = fx;
   let vf = c.vx * fx + c.vy * fy, vr = c.vx * rx + c.vy * ry;
   const max = P.max * (inp.boost ? P.boost : 1);
-  if (inp.gas && vf < max) vf += P.accel * (inp.boost ? 2 : 1) * dt;
+  if (inp.gas && vf < max * (inp.gasAmt === undefined ? 1 : 0.45 + 0.55 * inp.gasAmt)) vf += P.accel * (inp.boost ? 2 : 1) * (inp.boost ? 1 : (inp.gasAmt === undefined ? 1 : inp.gasAmt)) * dt;
   c.brakeOn = false;
   if (inp.brake) {
     if (vf > 30) { vf -= P.brake * dt; c.brakeOn = true; }
@@ -738,7 +747,57 @@ document.querySelectorAll('.tb').forEach(btn => {
   btn.addEventListener('pointerup', off); btn.addEventListener('pointercancel', off); btn.addEventListener('lostpointercapture', off);
   btn.addEventListener('contextmenu', e => e.preventDefault());
 });
+const stick = { on: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0, ang: 0 };
+const stickZone = $('stickZone'), stickBase = $('stickBase'), stickKnob = $('stickKnob');
+const STICK_R = 58;
+function stickHome() {
+  const r = stickZone.getBoundingClientRect();
+  stickBase.style.left = Math.min(120, r.width / 2) + 'px'; stickBase.style.top = (r.height - 130) + 'px';
+  stickKnob.style.transform = '';
+}
+function stickMove(e) {
+  let dx = e.clientX - stick.ox, dy = e.clientY - stick.oy;
+  const d = Math.hypot(dx, dy);
+  if (d > STICK_R) { dx *= STICK_R / d; dy *= STICK_R / d; }
+  stick.dx = dx; stick.dy = dy; stick.mag = Math.min(1, d / STICK_R); stick.ang = Math.atan2(dy, dx);
+  stickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+stickZone.addEventListener('pointerdown', e => {
+  if (stick.on) return;
+  e.preventDefault(); initAudio();
+  const r = stickZone.getBoundingClientRect();
+  stick.on = true; stick.id = e.pointerId; stick.ox = e.clientX; stick.oy = e.clientY;
+  stickBase.style.left = (e.clientX - r.left) + 'px'; stickBase.style.top = (e.clientY - r.top) + 'px';
+  stickBase.classList.add('active');
+  try { stickZone.setPointerCapture(e.pointerId); } catch (_) {}
+  stickMove(e);
+});
+stickZone.addEventListener('pointermove', e => { if (stick.on && e.pointerId === stick.id) stickMove(e); });
+const stickEnd = e => {
+  if (!stick.on || e.pointerId !== stick.id) return;
+  stick.on = false; stick.mag = 0; stickBase.classList.remove('active'); stickHome();
+};
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => stickZone.addEventListener(t, stickEnd));
+addEventListener('resize', stickHome); stickHome();
+// Joystick = "drive toward this screen direction": steer to that heading, throttle by how far it is pushed.
+function stickInput() {
+  const inp = { gas: false, brake: false, steer: 0, gasAmt: 1, analog: true };
+  if (!stick.on || stick.mag < 0.18) { player.joyRev = false; return inp; }
+  const diff = wrapA(stick.ang - player.a), ad = Math.abs(diff);
+  if (player.joyRev) { if (ad < 1.2 || player.vf > 60) player.joyRev = false; }
+  else if (ad > 2.1 && player.speed < 90) player.joyRev = true;
+  if (player.joyRev) {
+    inp.brake = true; inp.steer = -clamp(diff * 2, -1, 1);
+  } else {
+    inp.gas = true; inp.gasAmt = clamp((stick.mag - 0.18) / 0.6, 0.25, 1);
+    inp.steer = clamp(diff * 2.2, -1, 1);
+    if (ad > 1.9 && player.speed > 200) { inp.gas = false; inp.brake = true; }
+  }
+  return inp;
+}
 function getInput() {
+  const hb = !!(keys.Space || tch.hb), boost = !!(keys.ShiftLeft || keys.ShiftRight || tch.boost);
+  if (stick.on) return Object.assign(stickInput(), { hb, boost });
   const L = keys.ArrowLeft || keys.KeyA || tch.left, Rr = keys.ArrowRight || keys.KeyD || tch.right;
   return {
     gas: !!(keys.ArrowUp || keys.KeyW || tch.gas), brake: !!(keys.ArrowDown || keys.KeyS || tch.brake),
@@ -847,7 +906,7 @@ function update(dt) {
 
   // --- player
   const inp = G.over ? { gas: false, brake: true, steer: 0, hb: false, boost: false } : getInput();
-  player.steer = lerp(player.steer, inp.steer, Math.min(1, dt * 12));
+  player.steer = inp.analog ? inp.steer : lerp(player.steer, inp.steer, Math.min(1, dt * 12));
   inp.steer = player.steer;
   G.boosting = inp.boost && player.nitro > 0 && !G.over;
   inp.boost = G.boosting;
@@ -1220,7 +1279,7 @@ function render() {
     const m = 60;
     if (sx < m || sx > vw - m || sy < m + 70 || sy > vh - m) {
       const ang = Math.atan2(sy - vh / 2, sx - vw / 2);
-      const ex = clamp(sx, m, vw - m), ey = clamp(sy, m + 80, vh - m - (isTouch ? 190 : 20));
+      const ex = clamp(sx, m, vw - m), ey = clamp(sy, m + 80, vh - m - 20);
       ctx.save(); ctx.translate(ex, ey); ctx.rotate(ang);
       const pulse = 1 + Math.sin(tNow * 6) * 0.1; ctx.scale(pulse, pulse);
       ctx.fillStyle = '#ffc634'; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 3;
