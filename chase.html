@@ -83,11 +83,11 @@
   body.touch #touch { display: flex; }
   #touch .grid { display: flex; flex-direction: column; gap: 14px; pointer-events: auto; align-items: flex-end; }
   #stickZone { position: fixed; left: 0; bottom: 0; width: 62%; top: calc(env(safe-area-inset-top, 0px) + 96px); pointer-events: auto; touch-action: none; }
-  #stickBase { position: absolute; width: 140px; height: 140px; margin: -70px 0 0 -70px; border-radius: 50%;
+  #stickBase { position: absolute; width: 196px; height: 196px; margin: -98px 0 0 -98px; border-radius: 50%;
     border: 2px solid rgba(255,255,255,.22); background: radial-gradient(circle, rgba(255,255,255,.07), rgba(10,14,30,.45) 70%); opacity: .5; transition: opacity .15s; }
   #stickBase.active { opacity: 1; transition: none; }
-  #stickBase::after { content: ""; position: absolute; inset: 44px; border-radius: 50%; border: 1px dashed rgba(255,255,255,.18); }
-  #stickKnob { position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 50%;
+  #stickBase::after { content: ""; position: absolute; inset: 60px; border-radius: 50%; border: 1px dashed rgba(255,255,255,.18); }
+  #stickKnob { position: absolute; left: 50%; top: 50%; width: 86px; height: 86px; margin: -43px 0 0 -43px; border-radius: 50%;
     background: radial-gradient(circle at 40% 35%, #ffe08a, var(--gold) 60%, #c78f00); box-shadow: 0 4px 14px rgba(0,0,0,.5); }
   #stickHint { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 8px); font-size: 12px; color: var(--muted); white-space: nowrap; }
   #stickBase.active #stickHint { display: none; }
@@ -749,10 +749,10 @@ document.querySelectorAll('.tb').forEach(btn => {
 });
 const stick = { on: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0, ang: 0 };
 const stickZone = $('stickZone'), stickBase = $('stickBase'), stickKnob = $('stickKnob');
-const STICK_R = 58;
+const STICK_R = 82;
 function stickHome() {
   const r = stickZone.getBoundingClientRect();
-  stickBase.style.left = Math.min(120, r.width / 2) + 'px'; stickBase.style.top = (r.height - 130) + 'px';
+  stickBase.style.left = Math.min(130, r.width / 2) + 'px'; stickBase.style.top = (r.height - 150) + 'px';
   stickKnob.style.transform = '';
 }
 function stickMove(e) {
