@@ -215,7 +215,7 @@ const PICK_NAMES = ['나무', '돌', '구리', '철', '금', '다이아'];
 const PICK_COLORS = [0x8b5a2b, 0x8a8580, 0xd0743a, 0xd8d8d8, 0xffcb2e, 0x6ff0ff];
 
 // ---------- 저장 ----------
-const SAVE_KEY = 'pickaxePeak.v1', WORLD_KEY = 'pickaxePeak.world.v1';
+const SAVE_KEY = 'pickaxePeak.v1', WORLD_KEY = 'pickaxePeak.world.v2';
 const state = { money: 0, earned: 0, best: 0, power: 0, speed: 0, bag: 0, total: 0, turbo: false, inv: Object.fromEntries(ITEM_ORDER.map(k => [k, 0])) };
 try {
   const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
@@ -278,8 +278,8 @@ document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8ec5e8);
-scene.fog = new THREE.Fog(0x8ec5e8, 45, 120);
-const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 300);
+scene.fog = new THREE.Fog(0x8ec5e8, 80, 240);
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 500);
 scene.add(camera);
 
 scene.add(new THREE.HemisphereLight(0xe3f1ff, 0x5a4630, 0.55));
@@ -287,7 +287,8 @@ const sun = new THREE.DirectionalLight(0xfff1d6, 0.75);
 sun.position.set(30, 50, 20);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, near: 1, far: 140 });
+Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 160 });
+scene.add(sun.target); // 그림자 범위가 플레이어를 따라다님
 sun.shadow.bias = -0.0006;
 scene.add(sun);
 
@@ -338,7 +339,7 @@ const MATERIALS = [];
 }
 
 // ---------- 블록 산 ----------
-const R = 16, N = R * 2 + 1, H = 24;            // 가로세로 33칸, 높이 24칸
+const R = 26, N = R * 2 + 1, H = 32;            // 가로세로 53칸, 높이 32칸
 const grid = new Uint8Array(N * N * H);
 const idx = (x, y, z) => (x + R) + (z + R) * N + y * N * N;
 const inGrid = (x, y, z) => x >= -R && x <= R && z >= -R && z <= R && y >= 0 && y < H;
@@ -357,7 +358,7 @@ function generateMountain(seed) {
     const h = Math.min(H, Math.max(0, Math.floor((H - 2) * Math.pow(1 - r, 1.15) + ridge * (1 - r) + 1)));
     for (let y = 0; y < h; y++) {
       const d = h - 1 - y;                                   // 표면에서의 깊이
-      const core = Math.hypot(x, (y - 4) * 1.4, z) < 7.5;    // 산의 심장부
+      const core = Math.hypot(x, (y - 6) * 1.4, z) < 12;     // 산의 심장부
       let t = d === 0 ? T.GRASS : d <= 2 ? T.DIRT : core ? T.DEEP : T.STONE;
       if (d >= 2) {
         const k = d + (core ? 6 : 0), v = rnd();
@@ -464,7 +465,7 @@ function newMountain() {
 
 // ---------- 주변 지형 & 상점 ----------
 {
-  const geo = new THREE.PlaneGeometry(240, 240, 60, 60);
+  const geo = new THREE.PlaneGeometry(600, 600, 80, 80);
   geo.rotateX(-Math.PI / 2);
   const colors = [], c = new THREE.Color(), r = rngFrom(7);
   for (let i = 0; i < geo.attributes.position.count; i++) { c.setHex(0x5f9a3e).multiplyScalar(0.85 + r() * 0.25); colors.push(c.r, c.g, c.b); }
@@ -473,7 +474,7 @@ function newMountain() {
   ground.receiveShadow = true;
   scene.add(ground);
 }
-const SHOP_POS = new THREE.Vector3(0, 0, 25);
+const SHOP_POS = new THREE.Vector3(0, 0, R + 10);
 const SHOP_HALF = { x: 2.3, z: 1.8 };
 {
   const g = new THREE.Group();
@@ -494,8 +495,8 @@ const SHOP_HALF = { x: 2.3, z: 1.8 };
 {
   const trunkMat = mat(pixelTex(0x6b4a2b, 0x553820, 4, 40)), leafMat = mat(pixelTex(0x3f8a3a, 0x2f6e2c, 8, 41));
   const r = rngFrom(99);
-  for (let i = 0; i < 50; i++) {
-    const a = r() * Math.PI * 2, d = 24 + r() * 26, x = Math.cos(a) * d, z = Math.sin(a) * d;
+  for (let i = 0; i < 140; i++) {
+    const a = r() * Math.PI * 2, d = R + 9 + r() * 80, x = Math.cos(a) * d, z = Math.sin(a) * d;
     if (Math.hypot(x - SHOP_POS.x, z - SHOP_POS.z) < 7) continue;
     const g = new THREE.Group(), h = 2 + Math.floor(r() * 3);
     const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.6, h, 0.6), trunkMat); trunk.position.y = h / 2;
@@ -579,7 +580,7 @@ function sound(freq = 220, dur = 0.08, type = 'noise', vol = 0.25) {
 }
 
 // ---------- 플레이어 ----------
-const SPAWN = new THREE.Vector3(0, 0, 20);
+const SPAWN = new THREE.Vector3(0, 0, R + 5);
 const player = { pos: SPAWN.clone(), vel: new THREE.Vector3(), yaw: 0, pitch: 0.12, onGround: false };
 const EYE = 1.55, HALF_W = 0.3, BODY_H = 1.75, REACH = 4.6;
 const TURBO_MULT = 40;
@@ -1198,21 +1199,20 @@ autoBtn.addEventListener('click', e => { e.stopPropagation(); if (!playing) star
 autoBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); if (!menuOpen()) setAuto(!auto.on); }, { passive: false });
 
 const angleTo = (cur, want) => { let d = want - cur; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
+// 가장 가까운 캘 수 있는 블록부터 (눈 위치 기준 거리)
 function chooseBlock() {
-  let best = null, bestScore = -Infinity;
-  const px = player.pos.x, py = player.pos.y, pz = player.pos.z;
+  let best = null, bestD = Infinity;
+  const px = player.pos.x, ey = player.pos.y + EYE, pz = player.pos.z;
   for (let t = 1; t < BLOCKS.length; t++) {
     if (BLOCKS[t].tier > state.power) continue;
-    const val = Math.log(ITEMS[BLOCKS[t].item].value + 1) * 5 - BLOCKS[t].hp / damage() * 0.25;
     for (const i of lists[t]) {
       if (auto.skip.has(i)) continue;
       const [x, y, z] = posOf(i);
-      const dy = y - py;
-      if (dy > 2.5) continue;
-      const d = Math.hypot(x - px, (y - py) * 1.5, z - pz);
-      const score = val - d;
-      if (score <= bestScore || !exposed(x, y, z)) continue;
-      bestScore = score; best = i;
+      const d = Math.hypot(x - px, y + 0.5 - ey, z - pz);
+      if (d >= bestD) continue;
+      if (y + 0.5 - ey > 3 && d > REACH - 0.6) continue;   // 손이 안 닿는 높은 블록은 제외
+      if (!exposed(x, y, z)) continue;
+      bestD = d; best = i;
     }
   }
   return best;
@@ -1318,7 +1318,7 @@ function update(dt) {
   if (player.pos.y < 0) { player.pos.y = 0; player.vel.y = 0; player.onGround = true; }
   // 블록 안에 끼었으면 위로 밀어냄
   let guard = 0; while (collides(player.pos.x, player.pos.y, player.pos.z) && guard++ < 30) player.pos.y += 1;
-  const pr = Math.hypot(player.pos.x, player.pos.z), LIMIT = 48;
+  const pr = Math.hypot(player.pos.x, player.pos.z), LIMIT = 140;
   if (pr > LIMIT) { player.pos.x *= LIMIT / pr; player.pos.z *= LIMIT / pr; }
 
   const moving = player.onGround && Math.hypot(player.vel.x, player.vel.z) > 0.5;
@@ -1327,6 +1327,7 @@ function update(dt) {
   camera.position.set(player.pos.x, player.pos.y + EYE + stepLift + (moving ? Math.sin(bob) * 0.04 : 0), player.pos.z);
   camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
   camera.updateMatrixWorld();
+  sun.position.set(player.pos.x + 30, 50, player.pos.z + 20); sun.target.position.set(player.pos.x, 0, player.pos.z);
 
   // 조준
   target = findTarget();
