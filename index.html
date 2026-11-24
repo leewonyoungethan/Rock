@@ -1185,7 +1185,7 @@ function breakBlock(tg) {
 // 캘 수 있는 노출 블록 중 가깝고 값진 것을 골라 파고, 길을 막는 블록도 파면서 지나감.
 // 가방이 차면 상점에 가서 팔고 곡괭이 → 가방 → 속도 순으로 강화.
 const SELL_SPOT = new THREE.Vector3(SHOP_POS.x, 0, SHOP_POS.z - 3.4);
-const auto = { on: false, mode: 'seek', target: null, mine: false, stuck: 0, lastPos: new THREE.Vector3(), skip: new Set(), mineTime: 0, digAhead: false };
+const auto = { faceErr: 0, on: false, mode: 'seek', target: null, mine: false, stuck: 0, lastPos: new THREE.Vector3(), skip: new Set(), mineTime: 0, digAhead: false };
 const autoBtn = document.getElementById('autoBtn'), autoStatus = document.getElementById('autoStatus');
 function setAuto(on) {
   auto.on = on; auto.mode = 'seek'; auto.target = null; auto.mine = false; auto.skip.clear();
@@ -1211,15 +1211,27 @@ function chooseBlock() {
       const d = Math.hypot(x - px, y + 0.5 - ey, z - pz);
       if (d >= bestD) continue;
       if (y + 0.5 - ey > 3 && d > REACH - 0.6) continue;   // 손이 안 닿는 높은 블록은 제외
+      if (y < player.pos.y - 0.5 && Math.hypot(x - px, z - pz) < 0.9) continue; // 바로 발밑은 파지 않음
       if (!exposed(x, y, z)) continue;
       bestD = d; best = i;
     }
   }
   return best;
 }
+// 아무리 빨라도(방탄유리) 목표 앞에서 미끄러지지 않도록: 남은 거리에 맞춰 감속, 방향부터 맞춤
+const autoMaxSpeed = () => 4.5 * (state.turbo ? TURBO_MULT : 1) * (1 + petBonus().speed);
+function arrive(remain) {
+  const v = autoMaxSpeed();
+  let f = Math.min(1, Math.max(0, remain + 0.3) / (v * 0.15));
+  if (auto.faceErr > 0.6) f = Math.min(f, 0.6 / v);   // 크게 돌아야 하면 거의 멈춰서 돌기
+  return f;
+}
+const creep = unitsPerSec => Math.min(1, unitsPerSec / autoMaxSpeed());
 function faceTowards(x, y, z, dt) {
   const eye = player.pos.y + EYE, dx = x - player.pos.x, dz = z - player.pos.z, h = Math.hypot(dx, dz);
-  player.yaw += angleTo(player.yaw, Math.atan2(-dx, -dz)) * Math.min(1, dt * 7);
+  const err = angleTo(player.yaw, Math.atan2(-dx, -dz));
+  player.yaw += err * Math.min(1, dt * 7);
+  auto.faceErr = Math.abs(err);
   const wantPitch = Math.atan2(y - eye, Math.max(0.3, h));
   player.pitch += (wantPitch - player.pitch) * Math.min(1, dt * 7);
   return h;
@@ -1236,7 +1248,7 @@ function digAhead(dt) {
   player.pitch += (-0.25 - player.pitch) * Math.min(1, dt * 6);
   if (target && BLOCKS[target.type].tier <= state.power) { auto.mine = true; return 0; }
   player.pitch += (0.35 - player.pitch) * Math.min(1, dt * 3); // 머리 높이 블록 확인
-  return 0.4;
+  return creep(1.8);
 }
 function autopilot(dt) {
   auto.mine = false;
@@ -1252,7 +1264,7 @@ function autopilot(dt) {
       return 0;
     }
     handleStuck(dt, null);
-    return 1;
+    return arrive(h - 1.4);
   }
   if (auto.target == null || !grid[auto.target]) {
     auto.target = chooseBlock(); auto.mineTime = 0; auto.stuck = 0; auto.digAhead = false; auto.lastPos.copy(player.pos);
@@ -1269,11 +1281,11 @@ function autopilot(dt) {
     if (target && BLOCKS[target.type].tier <= state.power) auto.mine = true;   // 앞을 가린 블록도 함께 캠
     else if (target) { auto.skip.add(auto.target); auto.target = null; }
     if (auto.mineTime > 10) { auto.skip.add(auto.target); auto.target = null; }
-    return target ? 0 : 0.35;
+    return target ? 0 : creep(1.6);
   }
   if (auto.digAhead) { handleStuck(dt, auto.target); return digAhead(dt); }
   handleStuck(dt, auto.target);
-  return 1;
+  return arrive(d3 - (REACH - 0.6));
 }
 
 // ---------- 메인 루프 ----------
