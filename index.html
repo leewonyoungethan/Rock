@@ -582,7 +582,7 @@ function sound(freq = 220, dur = 0.08, type = 'noise', vol = 0.25) {
 const SPAWN = new THREE.Vector3(0, 0, 20);
 const player = { pos: SPAWN.clone(), vel: new THREE.Vector3(), yaw: 0, pitch: 0.12, onGround: false };
 const EYE = 1.55, HALF_W = 0.3, BODY_H = 1.75, REACH = 4.6;
-const TURBO_MULT = 5;
+const TURBO_MULT = 15;
 
 function solidAt(x, y, z) { // 월드 좌표의 블록 칸이 막혀 있는지
   if (y < 0) return true;
