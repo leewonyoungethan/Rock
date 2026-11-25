@@ -82,10 +82,12 @@
   #codeInput:focus { outline: 2px solid var(--accent); }
   #codeMsg { min-height: 1.4em; font-size: 13px; margin: 8px 0 0; }
   #autoStatus { font-size: 12px; color: var(--auto); text-shadow: 0 1px 2px #000; }
+  #minimap { position: absolute; right: 12px; bottom: 12px; width: 170px; height: 170px; border-radius: 10px; border: 2px solid rgba(255,255,255,.35); background: #3f6a2c; image-rendering: pixelated; }
   #mobile { display: none; }
   @media (pointer: coarse) {
     #mobile { display: block; }
     #help { display: none; }
+    #minimap { bottom: auto; top: 12px; width: 120px; height: 120px; }
     #joy { position: fixed; left: 24px; bottom: 70px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.2); pointer-events: auto; touch-action: none; }
     #knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.3); }
     .mbtn { position: fixed; right: 24px; width: 76px; height: 76px; border-radius: 50%; background: rgba(240,181,74,.75); color: #241a08; font-weight: 800; display: flex; align-items: center; justify-content: center; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -102,6 +104,7 @@
   <div id="target"><span id="tName"></span><div class="bar"><div class="fill" id="tFill"></div></div></div>
   <div id="inv"></div>
   <div id="toast"></div>
+  <canvas id="minimap" width="201" height="201" aria-label="지도"></canvas>
   <div id="topLeft">
     <div id="stats" class="panel"></div>
     <div class="btnRow">
@@ -215,7 +218,7 @@ const PICK_NAMES = ['나무', '돌', '구리', '철', '금', '다이아'];
 const PICK_COLORS = [0x8b5a2b, 0x8a8580, 0xd0743a, 0xd8d8d8, 0xffcb2e, 0x6ff0ff];
 
 // ---------- 저장 ----------
-const SAVE_KEY = 'pickaxePeak.v1', WORLD_KEY = 'pickaxePeak.world.v2';
+const SAVE_KEY = 'pickaxePeak.v1', WORLD_KEY = 'pickaxePeak.world.v3';
 const state = { money: 0, earned: 0, best: 0, power: 0, speed: 0, bag: 0, total: 0, turbo: false, inv: Object.fromEntries(ITEM_ORDER.map(k => [k, 0])) };
 try {
   const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
@@ -278,8 +281,8 @@ document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8ec5e8);
-scene.fog = new THREE.Fog(0x8ec5e8, 80, 240);
-const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 500);
+scene.fog = new THREE.Fog(0x8ec5e8, 90, 320);
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 700);
 scene.add(camera);
 
 scene.add(new THREE.HemisphereLight(0xe3f1ff, 0x5a4630, 0.55));
@@ -339,7 +342,18 @@ const MATERIALS = [];
 }
 
 // ---------- 블록 산 ----------
-const R = 26, N = R * 2 + 1, H = 32;            // 가로세로 53칸, 높이 32칸
+const R = 100, N = R * 2 + 1, H = 34;           // 가로세로 201칸, 높이 34칸 (산맥 전체)
+// 산의 자리(고정): 새 산맥이 솟아도 위치는 같고, 속 모양·광맥만 바뀜
+const MOUNTAINS = [
+  { x: 0,   z: 0,   r: 26, h: 32, name: '중앙 봉우리' },
+  { x: 70,  z: -40, r: 20, h: 26 },
+  { x: -65, z: -55, r: 18, h: 22 },
+  { x: -75, z: 45,  r: 22, h: 28 },
+  { x: 55,  z: 65,  r: 16, h: 20 },
+  { x: 5,   z: -85, r: 14, h: 18 },
+  { x: 85,  z: 15,  r: 12, h: 16 },
+  { x: -20, z: 80,  r: 13, h: 17 },
+];
 const grid = new Uint8Array(N * N * H);
 const idx = (x, y, z) => (x + R) + (z + R) * N + y * N * N;
 const inGrid = (x, y, z) => x >= -R && x <= R && z >= -R && z <= R && y >= 0 && y < H;
@@ -352,13 +366,19 @@ function generateMountain(seed) {
   const rnd = rngFrom(seed);
   const p1 = rnd() * 10, p2 = rnd() * 10;
   for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) {
-    const r = Math.hypot(x, z) / R;
-    if (r > 1) continue;
-    const ridge = 1.8 * Math.sin(x * 0.42 + p1) * Math.cos(z * 0.37 + p2) + 1.2 * Math.sin((x + z) * 0.23 + p2);
-    const h = Math.min(H, Math.max(0, Math.floor((H - 2) * Math.pow(1 - r, 1.15) + ridge * (1 - r) + 1)));
+    // 이 칸에서 가장 높이 솟은 산을 고름
+    let h = 0, m = null;
+    for (const mt of MOUNTAINS) {
+      const r = Math.hypot(x - mt.x, z - mt.z) / mt.r;
+      if (r >= 1) continue;
+      const ridge = 1.8 * Math.sin(x * 0.42 + p1) * Math.cos(z * 0.37 + p2) + 1.2 * Math.sin((x + z) * 0.23 + p2);
+      const hm = Math.min(H, Math.max(0, Math.floor((mt.h - 2) * Math.pow(1 - r, 1.15) + ridge * (1 - r) + 1)));
+      if (hm > h) { h = hm; m = mt; }
+    }
+    if (!m) continue;
     for (let y = 0; y < h; y++) {
       const d = h - 1 - y;                                   // 표면에서의 깊이
-      const core = Math.hypot(x, (y - 6) * 1.4, z) < 12;     // 산의 심장부
+      const core = Math.hypot(x - m.x, (y - m.h * 0.19) * 1.4, z - m.z) < m.r * 0.46;  // 산의 심장부
       let t = d === 0 ? T.GRASS : d <= 2 ? T.DIRT : core ? T.DEEP : T.STONE;
       if (d >= 2) {
         const k = d + (core ? 6 : 0), v = rnd();
@@ -434,12 +454,33 @@ function removeBlock(i) {
   }
 }
 
-// 월드 저장/불러오기 (캔 자리 유지)
+// 월드 저장/불러오기 (캔 자리 유지) — 빈칸이 대부분이라 연속 구간 압축(RLE)으로 저장
+function encodeGrid() {
+  const out = [];
+  for (let i = 0; i < grid.length;) {
+    const v = grid[i]; let n = 1;
+    while (i + n < grid.length && grid[i + n] === v) n++;
+    i += n; out.push(v);
+    while (n >= 128) { out.push((n & 127) | 128); n >>>= 7; }   // 길이는 7비트씩 가변 길이
+    out.push(n);
+  }
+  let s = ''; for (let i = 0; i < out.length; i += 8192) s += String.fromCharCode.apply(null, out.slice(i, i + 8192));
+  return btoa(s);
+}
+function decodeGrid(b64) {
+  const s = atob(b64); let p = 0, i = 0;
+  while (p < s.length) {
+    const v = s.charCodeAt(p++); let n = 0, shift = 0, c;
+    do { c = s.charCodeAt(p++); n |= (c & 127) << shift; shift += 7; } while (c & 128);
+    if (i + n > grid.length) return false;
+    grid.fill(v, i, i + n); i += n;
+  }
+  return i === grid.length;
+}
 let worldDirty = false, worldSaveTimer = 0;
 function saveWorld() {
   try {
-    let s = ''; for (let i = 0; i < grid.length; i += 8192) s += String.fromCharCode.apply(null, grid.subarray(i, i + 8192));
-    localStorage.setItem(WORLD_KEY, JSON.stringify({ seed: worldSeed, total: worldTotal, data: btoa(s) }));
+    localStorage.setItem(WORLD_KEY, JSON.stringify({ seed: worldSeed, total: worldTotal, rle: encodeGrid() }));
   } catch (e) {}
   worldDirty = false;
 }
@@ -452,20 +493,14 @@ function newMountain() {
 (function loadWorld() {
   try {
     const w = JSON.parse(localStorage.getItem(WORLD_KEY) || 'null');
-    if (w && w.data) {
-      const s = atob(w.data);
-      if (s.length === grid.length) {
-        for (let i = 0; i < s.length; i++) grid[i] = s.charCodeAt(i);
-        worldSeed = w.seed; worldTotal = w.total || 1; buildMeshes(); return;
-      }
-    }
+    if (w && w.rle && decodeGrid(w.rle)) { worldSeed = w.seed; worldTotal = w.total || 1; buildMeshes(); return; }
   } catch (e) {}
   newMountain();
 })();
 
 // ---------- 주변 지형 & 상점 ----------
 {
-  const geo = new THREE.PlaneGeometry(600, 600, 80, 80);
+  const geo = new THREE.PlaneGeometry(1000, 1000, 120, 120);
   geo.rotateX(-Math.PI / 2);
   const colors = [], c = new THREE.Color(), r = rngFrom(7);
   for (let i = 0; i < geo.attributes.position.count; i++) { c.setHex(0x5f9a3e).multiplyScalar(0.85 + r() * 0.25); colors.push(c.r, c.g, c.b); }
@@ -474,9 +509,12 @@ function newMountain() {
   ground.receiveShadow = true;
   scene.add(ground);
 }
-const SHOP_POS = new THREE.Vector3(0, 0, R + 10);
+// 상점 5곳 (산과 겹치지 않는 자리). 첫 번째가 중앙 봉우리 앞 시작 지점 상점
+const SHOPS = [[0, 36], [40, -10], [-40, 10], [30, -75], [25, 60]].map(([x, z]) => new THREE.Vector3(x, 0, z));
+const SHOP_POS = SHOPS[0];
 const SHOP_HALF = { x: 2.3, z: 1.8 };
-{
+const nearestShop = (x, z) => SHOPS.reduce((a, b) => Math.hypot(b.x - x, b.z - z) < Math.hypot(a.x - x, a.z - z) ? b : a);
+for (const shopPos of SHOPS) {
   const g = new THREE.Group();
   const wood = mat(pixelTex(0x8b6239, 0x6e4a28, 5, 30));
   const base = new THREE.Mesh(new THREE.BoxGeometry(4, 2.6, 3), wood); base.position.y = 1.3;
@@ -488,16 +526,17 @@ const SHOP_HALF = { x: 2.3, z: 1.8 };
   door.position.set(0, 0.85, -1.55);
   g.add(base, roof, roof2, sign, door);
   g.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
-  g.position.copy(SHOP_POS);
+  g.position.copy(shopPos);
   scene.add(g);
 }
 // 각진 나무
 {
   const trunkMat = mat(pixelTex(0x6b4a2b, 0x553820, 4, 40)), leafMat = mat(pixelTex(0x3f8a3a, 0x2f6e2c, 8, 41));
   const r = rngFrom(99);
-  for (let i = 0; i < 140; i++) {
-    const a = r() * Math.PI * 2, d = R + 9 + r() * 80, x = Math.cos(a) * d, z = Math.sin(a) * d;
-    if (Math.hypot(x - SHOP_POS.x, z - SHOP_POS.z) < 7) continue;
+  for (let i = 0; i < 420; i++) {
+    const a = r() * Math.PI * 2, d = 20 + Math.sqrt(r()) * 230, x = Math.cos(a) * d, z = Math.sin(a) * d;
+    if (SHOPS.some(sp => Math.hypot(x - sp.x, z - sp.z) < 8)) continue;
+    if (MOUNTAINS.some(mt => Math.hypot(x - mt.x, z - mt.z) < mt.r + 3)) continue;
     const g = new THREE.Group(), h = 2 + Math.floor(r() * 3);
     const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.6, h, 0.6), trunkMat); trunk.position.y = h / 2;
     const leaves = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2, 2.4), leafMat); leaves.position.y = h + 0.8;
@@ -580,7 +619,7 @@ function sound(freq = 220, dur = 0.08, type = 'noise', vol = 0.25) {
 }
 
 // ---------- 플레이어 ----------
-const SPAWN = new THREE.Vector3(0, 0, R + 5);
+const SPAWN = new THREE.Vector3(0, 0, 31);
 const player = { pos: SPAWN.clone(), vel: new THREE.Vector3(), yaw: 0, pitch: 0.12, onGround: false };
 const EYE = 1.55, HALF_W = 0.3, BODY_H = 1.75, REACH = 4.6;
 const TURBO_MULT = 300;
@@ -595,7 +634,7 @@ function collides(px, py, pz) {
   const y0 = Math.floor(py), y1 = Math.floor(py + BODY_H - 0.01);
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) if (solidAt(x, y, z)) return true;
   // 상점 건물
-  if (py < 3 && Math.abs(px - SHOP_POS.x) < SHOP_HALF.x + HALF_W && Math.abs(pz - SHOP_POS.z) < SHOP_HALF.z + HALF_W) return true;
+  if (py < 3) for (const sp of SHOPS) if (Math.abs(px - sp.x) < SHOP_HALF.x + HALF_W && Math.abs(pz - sp.z) < SHOP_HALF.z + HALF_W) return true;
   return false;
 }
 let stepLift = 0; // 계단 오를 때 카메라를 부드럽게
@@ -731,7 +770,7 @@ function toggleShop() {
   else tryLock();
 }
 const inventoryValue = () => Math.round(ITEM_ORDER.reduce((s, k) => s + state.inv[k] * ITEMS[k].value, 0) * (1 + petBonus().sell));
-const nearShop = () => Math.hypot(player.pos.x - SHOP_POS.x, player.pos.z - SHOP_POS.z) < 7.5;
+const nearShop = () => SHOPS.some(sp => Math.hypot(player.pos.x - sp.x, player.pos.z - sp.z) < 7.5);
 function renderShop() {
   const near = nearShop();
   document.getElementById('shopBody').innerHTML = `
@@ -740,7 +779,7 @@ function renderShop() {
     <div class="row"><span>곡괭이</span><span>${PICK_NAMES[state.power]} (공격력 ${damage().toFixed(1)})</span></div>
     <div class="row"><span>휘두르기 간격</span><span>${swingTime().toFixed(2)}초</span></div>
     <div class="row"><span>남은 산</span><span>${Math.round(blocksLeft / worldTotal * 100)}%</span></div>
-    ${near ? '' : '<p style="color:var(--bad)">⚠ 광물을 팔려면 산기슭의 빨간 지붕 상점 가까이 가야 해요. (강화는 어디서나 가능)</p>'}`;
+    ${near ? '' : '<p style="color:var(--bad)">⚠ 광물을 팔려면 빨간 지붕 상점(지도의 노란 점) 가까이 가야 해요. (강화는 어디서나 가능)</p>'}`;
   const sell = document.getElementById('sellBtn');
   sell.disabled = !near || inventoryValue() === 0;
   sell.textContent = `광물 모두 팔기 (+${inventoryValue()} G)`;
@@ -785,7 +824,8 @@ function regenMountain(msg) {
   newMountain();
   player.pos.copy(SPAWN); player.vel.set(0, 0, 0); player.yaw = 0;
   auto.target = null;
-  toast(msg || '⛰️ 새 산이 솟아올랐어요!', '#f0b54a');
+  toast(msg || '⛰️ 새 산맥이 솟아올랐어요!', '#f0b54a');
+  mapDirtyT = 0;
   sound(70, 0.8, 'noise', 0.5);
   renderShop(); updateHud();
 }
@@ -1184,7 +1224,7 @@ function breakBlock(tg) {
 // ---------- 자율 모드 ----------
 // 캘 수 있는 노출 블록 중 가깝고 값진 것을 골라 파고, 길을 막는 블록도 파면서 지나감.
 // 가방이 차면 상점에 가서 팔고 곡괭이 → 가방 → 속도 순으로 강화.
-const SELL_SPOT = new THREE.Vector3(SHOP_POS.x, 0, SHOP_POS.z - 3.4);
+const SELL_SPOT = new THREE.Vector3();  // 가장 가까운 상점 문 앞 (팔러 갈 때 정함)
 const auto = { faceErr: 0, on: false, mode: 'seek', target: null, mine: false, stuck: 0, lastPos: new THREE.Vector3(), skip: new Set(), mineTime: 0, digAhead: false };
 const autoBtn = document.getElementById('autoBtn'), autoStatus = document.getElementById('autoStatus');
 function setAuto(on) {
@@ -1256,6 +1296,7 @@ function autopilot(dt) {
   if (auto.mode === 'sell') {
     autoStatus.textContent = '🛒 가방이 가득! 상점으로 이동 중…';
     if (auto.digAhead) { handleStuck(dt, null); return digAhead(dt); }
+    const sp = nearestShop(player.pos.x, player.pos.z); SELL_SPOT.set(sp.x, 0, sp.z - 3.4);
     const h = faceTowards(SELL_SPOT.x, player.pos.y + EYE - 0.2, SELL_SPOT.z, dt);
     if (h < 1.4) {
       sellAll();
@@ -1286,6 +1327,38 @@ function autopilot(dt) {
   if (auto.digAhead) { handleStuck(dt, auto.target); return digAhead(dt); }
   handleStuck(dt, auto.target);
   return arrive(d3 - (REACH - 0.6));
+}
+
+// ---------- 미니맵 ----------
+// 산의 높이를 색으로 칠한 지도 + 상점(노란 점) + 나(흰 화살표). 북쪽이 위.
+const mapEl = document.getElementById('minimap'), mapCtx = mapEl.getContext('2d');
+const mapBase = document.createElement('canvas'); mapBase.width = mapBase.height = N;
+let mapDirtyT = 0;
+function drawMapBase() {
+  const g = mapBase.getContext('2d'), img = g.createImageData(N, N), d = img.data;
+  const c = new THREE.Color();
+  for (let zi = 0; zi < N; zi++) for (let xi = 0; xi < N; xi++) {
+    let top = -1, t = 0;
+    for (let y = H - 1; y >= 0; y--) { const v = grid[xi + zi * N + y * N * N]; if (v) { top = y; t = v; break; } }
+    if (top < 0) c.setHex(0x5f9a3e);
+    else if (t === T.GRASS) c.setHex(0x6fb04a).lerp(new THREE.Color(0xf2f2e6), top / H * 0.9);
+    else c.setHex(t === T.DIRT ? 0x8a5a33 : ITEMS[BLOCKS[t].item].color).multiplyScalar(0.7 + top / H * 0.5);
+    const o = (xi + zi * N) * 4;
+    d[o] = c.r * 255; d[o + 1] = c.g * 255; d[o + 2] = c.b * 255; d[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+}
+function drawMap(dt) {
+  if ((mapDirtyT -= dt) <= 0) { mapDirtyT = 3; drawMapBase(); }
+  mapCtx.drawImage(mapBase, 0, 0);
+  const toMap = v => v + R;
+  mapCtx.fillStyle = '#ffcb2e'; mapCtx.strokeStyle = '#3a2a08'; mapCtx.lineWidth = 2;
+  for (const sp of SHOPS) { mapCtx.beginPath(); mapCtx.arc(toMap(sp.x), toMap(sp.z), 5, 0, Math.PI * 2); mapCtx.fill(); mapCtx.stroke(); }
+  const px = Math.max(4, Math.min(N - 4, toMap(player.pos.x))), pz = Math.max(4, Math.min(N - 4, toMap(player.pos.z)));
+  mapCtx.save(); mapCtx.translate(px, pz); mapCtx.rotate(-player.yaw);
+  mapCtx.fillStyle = '#fff'; mapCtx.strokeStyle = '#000';
+  mapCtx.beginPath(); mapCtx.moveTo(0, -9); mapCtx.lineTo(6, 6); mapCtx.lineTo(0, 3); mapCtx.lineTo(-6, 6); mapCtx.closePath(); mapCtx.fill(); mapCtx.stroke();
+  mapCtx.restore();
 }
 
 // ---------- 메인 루프 ----------
@@ -1330,7 +1403,7 @@ function update(dt) {
   if (player.pos.y < 0) { player.pos.y = 0; player.vel.y = 0; player.onGround = true; }
   // 블록 안에 끼었으면 위로 밀어냄
   let guard = 0; while (collides(player.pos.x, player.pos.y, player.pos.z) && guard++ < 30) player.pos.y += 1;
-  const pr = Math.hypot(player.pos.x, player.pos.z), LIMIT = 140;
+  const pr = Math.hypot(player.pos.x, player.pos.z), LIMIT = 260;
   if (pr > LIMIT) { player.pos.x *= LIMIT / pr; player.pos.z *= LIMIT / pr; }
 
   const moving = player.onGround && Math.hypot(player.vel.x, player.vel.z) > 0.5;
@@ -1411,6 +1484,7 @@ function update(dt) {
   }
   if (worldDirty && (worldSaveTimer -= dt) <= 0) { worldSaveTimer = 3; saveWorld(); }
   updatePets(dt);
+  drawMap(dt);
   hudTimer -= dt; if (hudTimer <= 0) { hudTimer = 0.5; updateHud(); }
 }
 let hudTimer = 0;
