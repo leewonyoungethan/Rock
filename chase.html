@@ -176,6 +176,7 @@
     </div>
     <div class="btns">
       <button id="muteBtn" type="button">소리 끔</button>
+      <button id="viewBtn" type="button">시점: 위</button>
       <button id="pauseBtn" type="button">일시정지</button>
     </div>
   </div>
@@ -207,6 +208,7 @@
       <kbd>W A S D</kbd><span>가속 · 브레이크/후진 · 핸들 (방향키도 됨)</span>
       <kbd>Space</kbd><span>핸드브레이크 드리프트</span>
       <kbd>Shift</kbd><span>부스터 (니트로)</span>
+      <kbd>V</kbd><span>시점 바꾸기 (위에서 / 차 뒤에서)</span>
       <kbd>P</kbd><span>일시정지 &nbsp; <kbd>M</kbd> 소리</span>
     </div>
     <div class="keys touchOnly">
@@ -293,83 +295,93 @@ addEventListener('resize', resize);
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 if (isTouch) document.body.classList.add('touch');
 
-// ---------- map ----------
-const B = 520, R = 170, N = 8, W = B * N, HALF = R / 2, MIN = -HALF, MAX = W + HALF;
+// ---------- map (endless: blocks are generated on demand from a seed) ----------
+const B = 520, R = 170, HALF = R / 2, W = B * 8;
 const LANE = 34;
-let blocks = [], buildings = [], trees = [];
-const CS = 40, GN = Math.ceil((MAX - MIN) / CS);
+let mapSeed = 1, blockCache = new Map();
+const HUES = [222, 245, 200, 290, 170, 30];
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hash2(i, j) { let h = Math.imul(i | 0, 374761393) ^ Math.imul(j | 0, 668265263) ^ Math.imul(mapSeed, 2246822519); h = Math.imul(h ^ h >>> 13, 1274126177); return (h ^ h >>> 16) | 0; }
+function getBlock(i, j) {
+  const key = i + ',' + j;
+  let blk = blockCache.get(key);
+  if (blk) return blk;
+  const rng = mulberry(hash2(i, j));
+  const rf = (a, b) => a + rng() * (b - a), pk = arr => arr[Math.floor(rng() * arr.length)];
+  const bx = i * B + HALF, by = j * B + HALF, S = B - R;
+  blk = { x: bx, y: by, s: S, type: 'city', rects: [], trees: [] };
+  const r = rng();
+  const start = (i === 3 || i === 4) && (j === 3 || j === 4);
+  if (r < 0.13 && !start) {
+    blk.type = 'park';
+    for (let t = 0; t < 40 && blk.trees.length < 6; t++) {
+      const tr = { x: bx + rf(45, S - 45), y: by + rf(45, S - 45), r: rf(13, 19) };
+      if (blk.trees.every(o => Math.hypot(o.x - tr.x, o.y - tr.y) > 70)) blk.trees.push(tr);
+    }
+  } else {
+    const ins = 18, inner = S - ins * 2, ax = bx + ins, ay = by + ins, alley = 92, h2 = (inner - alley) / 2;
+    const mode = r < 0.42 ? 'one' : r < 0.64 ? 'v' : r < 0.86 ? 'h' : 'four';
+    const rs = [];
+    if (mode === 'one') rs.push([ax, ay, inner, inner]);
+    else if (mode === 'v') rs.push([ax, ay, h2, inner], [ax + h2 + alley, ay, h2, inner]);
+    else if (mode === 'h') rs.push([ax, ay, inner, h2], [ax, ay + h2 + alley, inner, h2]);
+    else rs.push([ax, ay, h2, h2], [ax + h2 + alley, ay, h2, h2], [ax, ay + h2 + alley, h2, h2], [ax + h2 + alley, ay + h2 + alley, h2, h2]);
+    rs.forEach(([x, y, w, h], n) => {
+      const hue = pk(HUES) + rf(-8, 8), sat = rf(14, 26);
+      const tall = rng() < 0.25;
+      const b = {
+        id: (hash2(i * 7 + n, j * 13 - n) >>> 0) % 1000003, x, y, w, h,
+        hgt: tall ? rf(150, 220) : rf(55, 140),
+        roof: `hsl(${hue} ${sat}% ${rf(15, 20)}%)`, edge: `hsl(${hue} ${sat + 10}% 30%)`,
+        sideA: `hsl(${hue} ${sat}% 9%)`, sideB: `hsl(${hue} ${sat}% 12.5%)`,
+        win: rng() < 0.6 ? '#ffd58c' : '#a8dcff', litPct: rf(25, 60),
+        neon: rng() < 0.28 ? pk(['#ff4fd8', '#3ff0ff', '#ffb02e', '#7d6bff']) : null,
+        details: []
+      };
+      const nd = 1 + Math.floor(rng() * 4);
+      for (let d = 0; d < nd; d++) { const sz = rf(10, 20); b.details.push({ x: rf(8, w - sz - 8), y: rf(8, h - sz - 8), s: sz, round: rng() < 0.3 }); }
+      if (tall && w > 120 && h > 120) b.helipad = true;
+      blk.rects.push(b);
+    });
+  }
+  blockCache.set(key, blk);
+  return blk;
+}
+function genMap() { mapSeed = (Math.random() * 2147483647) | 0; blockCache = new Map(); }
+function pruneBlocks(px, py) {
+  if (blockCache.size < 1200) return;
+  const pi = Math.floor(px / B), pj = Math.floor(py / B);
+  for (const [k, b] of blockCache) { const i = Math.floor(b.x / B), j = Math.floor(b.y / B); if (Math.abs(i - pi) > 10 || Math.abs(j - pj) > 10) blockCache.delete(k); }
+}
+// Navigation grid: a window centred on the player, rebuilt with each flow update.
+const CS = 40, GN = 112;
 const blocked = new Uint8Array(GN * GN);
 const flow = new Int32Array(GN * GN);
 const bfsQ = new Int32Array(GN * GN);
-
-function genMap() {
-  blocks = []; buildings = []; trees = [];
-  const hues = [222, 245, 200, 290, 170, 30];
-  let id = 1;
-  for (let i = 0; i < N; i++) {
-    blocks[i] = [];
-    for (let j = 0; j < N; j++) {
-      const bx = i * B + HALF, by = j * B + HALF, S = B - R;
-      const blk = { x: bx, y: by, s: S, type: 'city', rects: [], trees: [] };
-      const r = Math.random();
-      const center = (i === 3 || i === 4) && (j === 3 || j === 4);
-      if (r < 0.13 && !center) {
-        blk.type = 'park';
-        for (let t = 0; t < 40 && blk.trees.length < 6; t++) {
-          const tr = { x: bx + rand(45, S - 45), y: by + rand(45, S - 45), r: rand(13, 19) };
-          if (blk.trees.every(o => Math.hypot(o.x - tr.x, o.y - tr.y) > 70)) blk.trees.push(tr);
-        }
-        trees.push(...blk.trees);
-      } else {
-        const ins = 18, inner = S - ins * 2, ax = bx + ins, ay = by + ins, alley = 92, h2 = (inner - alley) / 2;
-        const mode = r < 0.42 ? 'one' : r < 0.64 ? 'v' : r < 0.86 ? 'h' : 'four';
-        const rs = [];
-        if (mode === 'one') rs.push([ax, ay, inner, inner]);
-        else if (mode === 'v') rs.push([ax, ay, h2, inner], [ax + h2 + alley, ay, h2, inner]);
-        else if (mode === 'h') rs.push([ax, ay, inner, h2], [ax, ay + h2 + alley, inner, h2]);
-        else rs.push([ax, ay, h2, h2], [ax + h2 + alley, ay, h2, h2], [ax, ay + h2 + alley, h2, h2], [ax + h2 + alley, ay + h2 + alley, h2, h2]);
-        for (const [x, y, w, h] of rs) {
-          const hue = pick(hues) + rand(-8, 8), sat = rand(14, 26);
-          const tall = Math.random() < 0.25;
-          const b = {
-            id: id++, x, y, w, h,
-            hgt: tall ? rand(150, 220) : rand(55, 140),
-            roof: `hsl(${hue} ${sat}% ${rand(15, 20)}%)`,
-            edge: `hsl(${hue} ${sat + 10}% 30%)`,
-            sideA: `hsl(${hue} ${sat}% 9%)`, sideB: `hsl(${hue} ${sat}% 12.5%)`,
-            win: Math.random() < 0.6 ? '#ffd58c' : '#a8dcff',
-            litPct: rand(25, 60),
-            neon: Math.random() < 0.28 ? pick(['#ff4fd8', '#3ff0ff', '#ffb02e', '#7d6bff']) : null,
-            details: []
-          };
-          const nd = 1 + rint(4);
-          for (let d = 0; d < nd; d++) {
-            const sz = rand(10, 20);
-            b.details.push({ x: rand(8, w - sz - 8), y: rand(8, h - sz - 8), s: sz, round: Math.random() < 0.3 });
-          }
-          if (tall && w > 120 && h > 120) b.helipad = true;
-          blk.rects.push(b); buildings.push(b);
-        }
-      }
-      blocks[i][j] = blk;
-    }
-  }
-  // nav grid
+let NX = 0, NY = 0;
+function buildNav(px, py) {
+  NX = (Math.floor(px / CS) - GN / 2) * CS; NY = (Math.floor(py / CS) - GN / 2) * CS;
   blocked.fill(0);
   const inf = 22;
   const markRect = (x0, y0, x1, y1) => {
-    const c0 = Math.max(0, Math.floor((x0 - MIN) / CS)), c1 = Math.min(GN - 1, Math.floor((x1 - MIN) / CS));
-    const r0 = Math.max(0, Math.floor((y0 - MIN) / CS)), r1 = Math.min(GN - 1, Math.floor((y1 - MIN) / CS));
+    const c0 = Math.max(0, Math.floor((x0 - NX) / CS)), c1 = Math.min(GN - 1, Math.floor((x1 - NX) / CS));
+    const r0 = Math.max(0, Math.floor((y0 - NY) / CS)), r1 = Math.min(GN - 1, Math.floor((y1 - NY) / CS));
     for (let cy = r0; cy <= r1; cy++) for (let cx = c0; cx <= c1; cx++) {
-      const px = MIN + (cx + 0.5) * CS, py = MIN + (cy + 0.5) * CS;
-      if (px >= x0 && px <= x1 && py >= y0 && py <= y1) blocked[cy * GN + cx] = 1;
+      const qx = NX + (cx + 0.5) * CS, qy = NY + (cy + 0.5) * CS;
+      if (qx >= x0 && qx <= x1 && qy >= y0 && qy <= y1) blocked[cy * GN + cx] = 1;
     }
   };
-  for (const b of buildings) markRect(b.x - inf, b.y - inf, b.x + b.w + inf, b.y + b.h + inf);
-  for (const t of trees) markRect(t.x - t.r - 14, t.y - t.r - 14, t.x + t.r + 14, t.y + t.r + 14);
+  const i0 = Math.floor(NX / B) - 1, i1 = Math.floor((NX + GN * CS) / B) + 1, j0 = Math.floor(NY / B) - 1, j1 = Math.floor((NY + GN * CS) / B) + 1;
+  for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+    const blk = getBlock(i, j);
+    for (const b of blk.rects) markRect(b.x - inf, b.y - inf, b.x + b.w + inf, b.y + b.h + inf);
+    for (const t of blk.trees) markRect(t.x - t.r - 14, t.y - t.r - 14, t.x + t.r + 14, t.y + t.r + 14);
+  }
 }
-const cellOf = (x, y) => [clamp(Math.floor((x - MIN) / CS), 0, GN - 1), clamp(Math.floor((y - MIN) / CS), 0, GN - 1)];
+const inNav = (x, y) => x >= NX && y >= NY && x < NX + GN * CS && y < NY + GN * CS;
+const cellOf = (x, y) => [clamp(Math.floor((x - NX) / CS), 0, GN - 1), clamp(Math.floor((y - NY) / CS), 0, GN - 1)];
 function computeFlow(px, py) {
+  buildNav(px, py);
   flow.fill(-1);
   const [sx, sy] = cellOf(px, py);
   let h = 0, t = 0; const s = sy * GN + sx;
@@ -383,6 +395,7 @@ function computeFlow(px, py) {
   }
 }
 function navTarget(c) {
+  if (!inNav(c.x, c.y)) return [player.x, player.y];
   let [cx, cy] = cellOf(c.x, c.y);
   let moved = false;
   for (let step = 0; step < 3; step++) {
@@ -400,10 +413,10 @@ function navTarget(c) {
     cx = bx; cy = by; moved = true;
   }
   if (!moved) return [player.x, player.y];
-  return [MIN + (cx + 0.5) * CS, MIN + (cy + 0.5) * CS];
+  return [NX + (cx + 0.5) * CS, NY + (cy + 0.5) * CS];
 }
 function isBlockedPt(x, y) {
-  if (x < MIN || y < MIN || x > MAX || y > MAX) return true;
+  if (!inNav(x, y)) return false;
   const [cx, cy] = cellOf(x, y); return blocked[cy * GN + cx] === 1;
 }
 function los(a, b) {
@@ -411,14 +424,16 @@ function los(a, b) {
   for (let i = 1; i < n; i++) { const t = i / n; if (isBlockedPt(lerp(a.x, b.x, t), lerp(a.y, b.y, t))) return false; }
   return true;
 }
-function randRoadPoint() {
-  if (Math.random() < 0.5) return { x: rand(0, W), y: rint(N + 1) * B + rand(-48, 48) };
-  return { x: rint(N + 1) * B + rand(-48, 48), y: rand(0, W) };
+// A random spot on a road within `rad` of (cx, cy).
+function randRoadPoint(cx, cy, rad) {
+  if (cx === undefined) { cx = player ? player.x : W / 2; cy = player ? player.y : W / 2; rad = 2000; }
+  if (Math.random() < 0.5) return { x: cx + rand(-rad, rad), y: Math.round((cy + rand(-rad, rad)) / B) * B + rand(-48, 48) };
+  return { x: Math.round((cx + rand(-rad, rad)) / B) * B + rand(-48, 48), y: cy + rand(-rad, rad) };
 }
 
 // ---------- state ----------
 let G = null, player = null, cops = [], civs = [], hulks = [], particles = [], skids = [], floats = [], pickups = [];
-let cam = { x: W / 2, y: W / 2, zoom: 1 };
+let cam = { x: W / 2, y: W / 2, zoom: 1, rot: 0 };
 const TH = [0, 25, 60, 110, 180];
 const COPS_FOR = [3, 5, 7, 10, 13];
 const PP = { accel: 440, max: 560, boost: 1.45, brake: 950, rev: 430, revAccel: 600, grip: 8.5, gripHB: 1.35, turn: 3.15 };
@@ -458,7 +473,11 @@ function spawnCiv(far) {
   let c;
   for (let t = 0; t < 30; t++) {
     c = makeCar(0, 0, 0, 'civ');
-    c.dir = rint(4); c.lane = rint(N + 1); c.s = rand(0, W); civPos(c);
+    const cx0 = player ? player.x : W / 2, cy0 = player ? player.y : W / 2;
+    c.dir = rint(4);
+    if (c.dir % 2 === 0) { c.lane = Math.round((cy0 + rand(-2000, 2000)) / B); c.s = cx0 + rand(-2000, 2000); }
+    else { c.lane = Math.round((cx0 + rand(-2000, 2000)) / B); c.s = cy0 + rand(-2000, 2000); }
+    civPos(c);
     if (!far || !player || (dist(c, player) > 1100 && !onScreen(c, 100))) break;
   }
   c.a = DIRA[c.dir]; c.spd = rand(120, 190); c.cur = c.spd; c.mode = 'lane';
@@ -481,8 +500,8 @@ function updateCivLane(c, dt) {
   else if (Math.ceil(c.s / B) < Math.ceil(prev / B)) m = Math.ceil(c.s / B);
   if (m !== null) {
     const opts = [];
-    if (m + DS[c.dir] >= 0 && m + DS[c.dir] <= N) opts.push(c.dir, c.dir);
-    for (const d of (c.dir % 2 === 0 ? [1, 3] : [0, 2])) if (c.lane + DS[d] >= 0 && c.lane + DS[d] <= N) opts.push(d);
+    opts.push(c.dir, c.dir);
+    for (const d of (c.dir % 2 === 0 ? [1, 3] : [0, 2])) opts.push(d);
     const nd = opts.length ? pick(opts) : (c.dir + 2) % 4;
     if (nd !== c.dir) {
       if (nd === (c.dir + 2) % 4) c.s = m * B;
@@ -509,7 +528,7 @@ function newPickup(type) {
   let p;
   for (let t = 0; t < 30; t++) {
     p = randRoadPoint();
-    if (player && dist(p, player) < 350) continue;
+    if (player && (dist(p, player) < 350 || (G && !G.menu && onScreen(p, 40)))) continue;
     if (pickups.some(o => dist(o, p) < 140)) continue;
     break;
   }
@@ -525,7 +544,22 @@ function spawnHeist() {
 }
 
 // ---------- cops ----------
-function onScreen(p, m) { return Math.abs(p.x - cam.x) < vw / 2 / cam.zoom + m && Math.abs(p.y - cam.y) < vh / 2 / cam.zoom + m; }
+function onScreen(p, m) {
+  if (Math.abs(cam.rot) > 0.01) return Math.hypot(p.x - cam.x, p.y - cam.y) < Math.hypot(vw, vh) / 2 / cam.zoom + m;
+  return Math.abs(p.x - cam.x) < vw / 2 / cam.zoom + m && Math.abs(p.y - cam.y) < vh / 2 / cam.zoom + m;
+}
+// Camera mode: 'top' = north-up overhead, 'chase' = screen turns with the car so it always drives upward.
+let viewMode = store.get('chase_view') === 'chase' ? 'chase' : 'top';
+function toggleView() {
+  viewMode = viewMode === 'top' ? 'chase' : 'top';
+  store.set('chase_view', viewMode);
+  $('viewBtn').textContent = viewMode === 'chase' ? '시점: 뒤' : '시점: 위';
+  if (G && !G.menu) toast(viewMode === 'chase' ? '차 뒤 시점' : '위에서 보는 시점', 'blue');
+}
+function worldToScreen(x, y) {
+  const dx = (x - cam.x) * cam.zoom, dy = (y - cam.y) * cam.zoom, c = Math.cos(cam.rot), s = Math.sin(cam.rot);
+  return [dx * c - dy * s + vw / 2, dx * s + dy * c + vh / 2];
+}
 function spawnCop() {
   for (let t = 0; t < 40; t++) {
     const p = randRoadPoint(); const d = dist(p, player);
@@ -610,10 +644,8 @@ function collideWorld(c) {
   let imp = 0;
   const bi = Math.floor(c.x / B), bj = Math.floor(c.y / B);
   for (let i = bi - 1; i <= bi + 1; i++) {
-    if (i < 0 || i >= N) continue;
     for (let j = bj - 1; j <= bj + 1; j++) {
-      if (j < 0 || j >= N) continue;
-      const blk = blocks[i][j];
+      const blk = getBlock(i, j);
       for (const r of blk.rects) imp = Math.max(imp, circleRect(c, r));
       for (const t of blk.trees) {
         const dx = c.x - t.x, dy = c.y - t.y, d = Math.hypot(dx, dy), rr = c.r + t.r;
@@ -621,10 +653,6 @@ function collideWorld(c) {
       }
     }
   }
-  if (c.x < MIN + c.r) { c.x = MIN + c.r; imp = Math.max(imp, bounce(c, 1, 0)); }
-  if (c.x > MAX - c.r) { c.x = MAX - c.r; imp = Math.max(imp, bounce(c, -1, 0)); }
-  if (c.y < MIN + c.r) { c.y = MIN + c.r; imp = Math.max(imp, bounce(c, 0, 1)); }
-  if (c.y > MAX - c.r) { c.y = MAX - c.r; imp = Math.max(imp, bounce(c, 0, -1)); }
   return imp;
 }
 function collidePair(a, b) {
@@ -734,6 +762,7 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'KeyP' || e.code === 'Escape') togglePause();
   if (e.code === 'KeyM') setMuted(!muted);
+  if (e.code === 'KeyV') toggleView();
   if (e.code === 'Enter' && G && G.menu) startGame();
   if (e.code === 'KeyR' && G && G.over && !$('overScreen').hidden) startGame();
 });
@@ -783,7 +812,7 @@ addEventListener('resize', stickHome); stickHome();
 function stickInput() {
   const inp = { gas: false, brake: false, steer: 0, gasAmt: 1, analog: true };
   if (!stick.on || stick.mag < 0.18) { player.joyRev = false; return inp; }
-  const diff = wrapA(stick.ang - player.a), ad = Math.abs(diff);
+  const diff = wrapA(stick.ang - cam.rot - player.a), ad = Math.abs(diff);
   if (player.joyRev) { if (ad < 1.2 || player.vf > 60) player.joyRev = false; }
   else if (ad > 2.1 && player.speed < 90) player.joyRev = true;
   if (player.joyRev) {
@@ -851,6 +880,8 @@ $('againBtn').onclick = startGame;
 $('resumeBtn').onclick = togglePause;
 $('quitBtn').onclick = startGame;
 $('pauseBtn').onclick = () => { initAudio(); togglePause(); };
+$('viewBtn').onclick = () => { toggleView(); $('viewBtn').blur(); };
+$('viewBtn').textContent = viewMode === 'chase' ? '시점: 뒤' : '시점: 위';
 $('muteBtn').onclick = () => { initAudio(); setMuted(!muted); };
 setMuted(muted);
 $('bestStart').textContent = store.get('chase_best') ? '최고 기록 ' + fmtNum(+store.get('chase_best')) : '';
@@ -888,7 +919,7 @@ function killCop(c) {
 function update(dt) {
   if (G.menu) {
     const t = performance.now() / 4000;
-    cam.x = W / 2 + Math.cos(t) * 700; cam.y = W / 2 + Math.sin(t * 1.3) * 500; cam.zoom = baseZoom() * 0.9;
+    cam.x = W / 2 + Math.cos(t) * 700; cam.y = W / 2 + Math.sin(t * 1.3) * 500; cam.zoom = baseZoom() * 0.9; cam.rot = 0;
     for (const c of civs) c.mode === 'lane' ? updateCivLane(c, dt) : updateLoose(c, dt);
     return;
   }
@@ -902,7 +933,12 @@ function update(dt) {
   G.stars = st; G.maxStars = Math.max(G.maxStars, st);
 
   G.flowT -= dt;
-  if (G.flowT <= 0) { computeFlow(player.x, player.y); G.flowT = 0.3; }
+  if (G.flowT <= 0) {
+    computeFlow(player.x, player.y); G.flowT = 0.3; pruneBlocks(player.x, player.y);
+    // endless map: recycle far-away pickups and a heist left far behind
+    for (let i = 0; i < pickups.length; i++) if (dist(pickups[i], player) > 2600) pickups[i] = newPickup(pickups[i].type);
+    if (G.heist && dist(G.heist, player) > 4500) spawnHeist();
+  }
 
   // --- player
   const inp = G.over ? { gas: false, brake: true, steer: 0, hb: false, boost: false } : getInput();
@@ -1069,9 +1105,13 @@ function update(dt) {
   if (skids.length > 1400) skids.splice(0, skids.length - 1400);
 
   // --- camera
-  const lookT = G.over ? 0 : 0.32;
-  cam.x = lerp(cam.x, player.x + player.vx * lookT, Math.min(1, dt * 4));
-  cam.y = lerp(cam.y, player.y + player.vy * lookT, Math.min(1, dt * 4));
+  const lookT = G.over ? 0 : viewMode === 'chase' ? 0.12 : 0.32;
+  const ahead = viewMode === 'chase' && !G.over ? Math.min(vw, vh) * 0.22 / cam.zoom : 0;
+  cam.x = lerp(cam.x, player.x + player.vx * lookT + Math.cos(player.a) * ahead, Math.min(1, dt * 4));
+  cam.y = lerp(cam.y, player.y + player.vy * lookT + Math.sin(player.a) * ahead, Math.min(1, dt * 4));
+  const rotT = viewMode === 'chase' ? -Math.PI / 2 - player.a : 0;
+  cam.rot += wrapA(rotT - cam.rot) * Math.min(1, dt * (viewMode === 'chase' ? 4.5 : 6));
+  cam.rot = wrapA(cam.rot);
   const zt = baseZoom() * (1 - Math.min(0.24, player.speed / 2400) - (G.boosting ? 0.05 : 0));
   cam.zoom = lerp(cam.zoom, zt, Math.min(1, dt * 2));
   G.shake = Math.max(0, G.shake - dt * 30);
@@ -1108,7 +1148,8 @@ function setWorld(c, scale) {
   const z = cam.zoom * scale;
   let sx = 0, sy = 0;
   if (G && G.shake > 0) { sx = (Math.random() - 0.5) * G.shake; sy = (Math.random() - 0.5) * G.shake; }
-  c.setTransform(z, 0, 0, z, scale * (vw / 2 + sx) - cam.x * z, scale * (vh / 2 + sy) - cam.y * z);
+  const co = Math.cos(cam.rot) * z, si = Math.sin(cam.rot) * z;
+  c.setTransform(co, si, -si, co, scale * (vw / 2 + sx) - (co * cam.x - si * cam.y), scale * (vh / 2 + sy) - (si * cam.x + co * cam.y));
 }
 function rr(c, x, y, w, h, r) {
   c.beginPath(); c.moveTo(x + r, y); c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r);
@@ -1116,7 +1157,8 @@ function rr(c, x, y, w, h, r) {
   c.quadraticCurveTo(x, y + h, x, y + h - r); c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y); c.closePath();
 }
 function view() {
-  const hw = vw / 2 / cam.zoom, hh = vh / 2 / cam.zoom;
+  let hw = vw / 2 / cam.zoom, hh = vh / 2 / cam.zoom;
+  if (Math.abs(cam.rot) > 0.01) hw = hh = Math.hypot(vw, vh) / 2 / cam.zoom;
   return { x0: cam.x - hw, y0: cam.y - hh, x1: cam.x + hw, y1: cam.y + hh };
 }
 function render() {
@@ -1126,14 +1168,14 @@ function render() {
   setWorld(ctx, dpr);
   // ground
   ctx.fillStyle = '#1b1e28';
-  ctx.fillRect(Math.max(MIN, V.x0), Math.max(MIN, V.y0), Math.min(MAX, V.x1) - Math.max(MIN, V.x0), Math.min(MAX, V.y1) - Math.max(MIN, V.y0));
-  // world border
-  ctx.strokeStyle = '#ffc634'; ctx.lineWidth = 6; ctx.setLineDash([24, 18]); ctx.strokeRect(MIN, MIN, MAX - MIN, MAX - MIN); ctx.setLineDash([]);
-  const i0 = clamp(Math.floor(V.x0 / B) - 1, 0, N - 1), i1 = clamp(Math.floor(V.x1 / B) + 1, 0, N - 1);
-  const j0 = clamp(Math.floor(V.y0 / B) - 1, 0, N - 1), j1 = clamp(Math.floor(V.y1 / B) + 1, 0, N - 1);
+  ctx.fillRect(V.x0 - 10, V.y0 - 10, V.x1 - V.x0 + 20, V.y1 - V.y0 + 20);
+  const i0 = Math.floor(V.x0 / B) - 1, i1 = Math.floor(V.x1 / B) + 1;
+  const j0 = Math.floor(V.y0 / B) - 1, j1 = Math.floor(V.y1 / B) + 1;
+  const visBuildings = [], visTrees = [];
   // blocks ground
   for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
-    const b = blocks[i][j];
+    const b = getBlock(i, j);
+    visBuildings.push(...b.rects); visTrees.push(...b.trees);
     ctx.fillStyle = b.type === 'park' ? '#132a1c' : '#2a2e3b';
     rr(ctx, b.x, b.y, b.s, b.s, 14); ctx.fill();
     ctx.strokeStyle = '#3c4152'; ctx.lineWidth = 3; ctx.stroke();
@@ -1149,7 +1191,7 @@ function render() {
   }
   // road markings
   ctx.fillStyle = '#c9a43a';
-  for (let k = 0; k <= N; k++) {
+  for (let k = Math.min(i0, j0); k <= Math.max(i1, j1) + 1; k++) {
     const y = k * B;
     if (y > V.y0 - 100 && y < V.y1 + 100) for (let i = i0; i <= i1; i++) {
       const xa = i * B + HALF, xb = (i + 1) * B - HALF;
@@ -1189,8 +1231,8 @@ function render() {
   lctx.globalCompositeOperation = 'destination-out';
   setWorld(lctx, dpr / 2);
   const lamps = [];
-  for (let k = clamp(Math.floor(V.x0 / B), 0, N); k <= clamp(Math.ceil(V.x1 / B), 0, N); k++)
-    for (let l = clamp(Math.floor(V.y0 / B), 0, N); l <= clamp(Math.ceil(V.y1 / B), 0, N); l++) {
+  for (let k = Math.floor(V.x0 / B); k <= Math.ceil(V.x1 / B); k++)
+    for (let l = Math.floor(V.y0 / B); l <= Math.ceil(V.y1 / B); l++) {
       lamps.push([k * B + HALF + 6, l * B + HALF + 6], [k * B - HALF - 6, l * B - HALF - 6]);
     }
   for (const [x, y] of lamps) radial(lctx, x, y, 200, 'rgba(0,0,0,0.85)');
@@ -1243,14 +1285,14 @@ function render() {
   if (G.heist && vis(G.heist)) drawHeist(G.heist, tNow);
 
   // trees and buildings
-  for (const t of trees) {
+  for (const t of visTrees) {
     if (t.x < V.x0 - 60 || t.x > V.x1 + 60 || t.y < V.y0 - 60 || t.y > V.y1 + 60) continue;
     const k = 0.05, ox = (t.x - cam.x) * k, oy = (t.y - cam.y) * k;
     ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.arc(t.x + 4, t.y + 5, t.r + 3, 0, 6.283); ctx.fill();
     ctx.fillStyle = '#16351f'; ctx.beginPath(); ctx.arc(t.x + ox, t.y + oy, t.r + 6, 0, 6.283); ctx.fill();
     ctx.fillStyle = '#1f4a2b'; ctx.beginPath(); ctx.arc(t.x + ox * 1.4 - 3, t.y + oy * 1.4 - 3, t.r, 0, 6.283); ctx.fill();
   }
-  const vb = buildings.filter(b => b.x + b.w > V.x0 - 260 && b.x < V.x1 + 260 && b.y + b.h > V.y0 - 260 && b.y < V.y1 + 260);
+  const vb = visBuildings.filter(b => b.x + b.w > V.x0 - 260 && b.x < V.x1 + 260 && b.y + b.h > V.y0 - 260 && b.y < V.y1 + 260);
   vb.sort((a, b) => Math.hypot(b.x + b.w / 2 - cam.x, b.y + b.h / 2 - cam.y) - Math.hypot(a.x + a.w / 2 - cam.x, a.y + a.h / 2 - cam.y));
   for (const b of vb) drawBuilding(b);
 
@@ -1264,18 +1306,19 @@ function render() {
     ctx.strokeStyle = Math.floor(tNow * 8) % 2 ? '#ff3d55' : '#3f86ff';
     ctx.beginPath(); ctx.arc(player.x, player.y, 42, -Math.PI / 2, -Math.PI / 2 + G.bust * 6.283); ctx.stroke();
   }
-  // floating text
+  // floating text (screen space so it stays upright when the camera turns)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (const f of floats) {
     const a = clamp(f.life / 0.4, 0, 1);
-    ctx.font = '20px "Black Han Sans", sans-serif';
-    ctx.globalAlpha = a; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillText(f.txt, f.x + 1.5, f.y + 2);
-    ctx.fillStyle = f.col; ctx.fillText(f.txt, f.x, f.y); ctx.globalAlpha = 1;
+    const [fx, fy] = worldToScreen(f.x, f.y);
+    ctx.font = Math.round(20 * cam.zoom + 4) + 'px "Black Han Sans", sans-serif';
+    ctx.globalAlpha = a; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillText(f.txt, fx + 1.5, fy + 2);
+    ctx.fillStyle = f.col; ctx.fillText(f.txt, fx, fy); ctx.globalAlpha = 1;
   }
   // screen space: heist arrow
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (G.heist && !G.menu && !G.over) {
-    const sx = (G.heist.x - cam.x) * cam.zoom + vw / 2, sy = (G.heist.y - cam.y) * cam.zoom + vh / 2;
+    const [sx, sy] = worldToScreen(G.heist.x, G.heist.y);
     const m = 60;
     if (sx < m || sx > vw - m || sy < m + 70 || sy > vh - m) {
       const ang = Math.atan2(sy - vh / 2, sx - vw / 2);
@@ -1421,34 +1464,31 @@ function drawHeli(h, t) {
   ctx.restore();
 }
 
-// ---------- minimap ----------
-let miniBase = null;
-function renderMiniBase() {
-  const s = mini.width; miniBase = document.createElement('canvas'); miniBase.width = s; miniBase.height = s;
-  const m = miniBase.getContext('2d'), sc = s / (MAX - MIN);
-  m.fillStyle = '#2b3042'; m.fillRect(0, 0, s, s);
-  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
-    const b = blocks[i][j];
-    m.fillStyle = b.type === 'park' ? '#173322' : '#141826';
-    m.fillRect((b.x - MIN) * sc, (b.y - MIN) * sc, b.s * sc, b.s * sc);
-  }
-  m.fillStyle = '#0c0f19';
-  for (const b of buildings) m.fillRect((b.x - MIN) * sc, (b.y - MIN) * sc, b.w * sc, b.h * sc);
-}
+// ---------- minimap (local area around the player, north-up) ----------
+const MINI_SPAN = 3400;
+function renderMiniBase() {}
 function drawMini(t) {
-  if (!miniBase) return;
-  const s = mini.width, sc = s / (MAX - MIN);
+  const s = mini.width, sc = s / MINI_SPAN, ox = player.x - MINI_SPAN / 2, oy = player.y - MINI_SPAN / 2;
   mctx.setTransform(1, 0, 0, 1, 0, 0);
-  mctx.clearRect(0, 0, s, s);
-  mctx.drawImage(miniBase, 0, 0);
-  const dot = (x, y, r, col) => { mctx.fillStyle = col; mctx.beginPath(); mctx.arc((x - MIN) * sc, (y - MIN) * sc, r, 0, 6.283); mctx.fill(); };
-  for (const p of pickups) dot(p.x, p.y, dpr * 1.1, p.type === 'cash' ? '#3fbf6a' : p.type === 'nitro' ? '#3fb7ff' : '#e9f5ee');
-  if (G.heist) dot(G.heist.x, G.heist.y, dpr * (3 + Math.sin(t * 6)), '#ffc634');
+  mctx.fillStyle = '#2b3042'; mctx.fillRect(0, 0, s, s);
+  const i0 = Math.floor(ox / B) - 1, i1 = Math.floor((ox + MINI_SPAN) / B) + 1, j0 = Math.floor(oy / B) - 1, j1 = Math.floor((oy + MINI_SPAN) / B) + 1;
+  for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+    const b = getBlock(i, j);
+    mctx.fillStyle = b.type === 'park' ? '#173322' : '#141826';
+    mctx.fillRect((b.x - ox) * sc, (b.y - oy) * sc, b.s * sc, b.s * sc);
+    mctx.fillStyle = '#0c0f19';
+    for (const r of b.rects) mctx.fillRect((r.x - ox) * sc, (r.y - oy) * sc, r.w * sc, r.h * sc);
+  }
+  const dot = (x, y, r, col) => { mctx.fillStyle = col; mctx.beginPath(); mctx.arc((x - ox) * sc, (y - oy) * sc, r, 0, 6.283); mctx.fill(); };
+  for (const p of pickups) dot(p.x, p.y, dpr * 1.3, p.type === 'cash' ? '#3fbf6a' : p.type === 'nitro' ? '#3fb7ff' : '#e9f5ee');
+  if (G.heist) {
+    const hx = clamp((G.heist.x - ox) * sc, 6, s - 6), hy = clamp((G.heist.y - oy) * sc, 6, s - 6);
+    mctx.fillStyle = '#ffc634'; mctx.beginPath(); mctx.arc(hx, hy, dpr * (3 + Math.sin(t * 6)), 0, 6.283); mctx.fill();
+  }
   const ph = Math.floor(t * 6) % 2;
   for (const c of cops) dot(c.x, c.y, dpr * 2.4, ph ? '#ff3d55' : '#3f86ff');
   if (G.heli) dot(G.heli.x, G.heli.y, dpr * 3, 'rgba(160,190,255,.6)');
-  // player arrow
-  mctx.save(); mctx.translate((player.x - MIN) * sc, (player.y - MIN) * sc); mctx.rotate(player.a);
+  mctx.save(); mctx.translate(s / 2, s / 2); mctx.rotate(player.a);
   mctx.fillStyle = '#ffffff'; mctx.beginPath(); mctx.moveTo(dpr * 5, 0); mctx.lineTo(-dpr * 3.5, -dpr * 3.5); mctx.lineTo(-dpr * 3.5, dpr * 3.5); mctx.closePath(); mctx.fill();
   mctx.restore();
 }
