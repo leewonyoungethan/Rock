@@ -147,6 +147,8 @@
   <div class="card">
     <h2>🏆 광부 순위</h2>
     <p style="margin-top:0">지금까지 상점에서 번 골드 합계 순서예요.</p>
+    <label for="nickInput" class="row" style="align-items:center;margin-bottom:8px"><span>내 닉네임</span>
+      <input id="nickInput" type="text" maxlength="12" placeholder="광부 이름 (최대 12자)" autocomplete="off" style="flex:1;max-width:200px;font:inherit;padding:6px 10px;border-radius:8px;border:1px solid #574b3b;background:#16130f;color:var(--text)" /></label>
     <ol id="rankList"></ol>
     <p id="rankNote"></p>
     <button type="button" id="rankClose" class="ghost">닫기 (R)</button>
@@ -267,8 +269,10 @@ function petBonus() {
   return b;
 }
 const bagCap = () => 30 + state.bag * 20 + petBonus().bag;
-const damage = () => (1 + state.power * 1.6) * (1 + petBonus().dmg);
-const swingTime = () => Math.max(0.16, 0.42 * Math.pow(0.85, state.speed));
+const damage = () => (1 + state.power * 1.6) * (1 + petBonus().dmg) * (state.turbo ? TURBO_HIT : 1);
+const TURBO_SWING = 8, TURBO_HIT = 3;            // 방탄유리: 손도 빠르게 (휘두르기 8배, 피해 3배)
+const baseSwing = () => Math.max(0.16, 0.42 * Math.pow(0.85, state.speed));
+const swingTime = () => baseSwing() / (state.turbo ? TURBO_SWING : 1);
 const bagCount = () => ITEM_ORDER.reduce((n, k) => n + state.inv[k], 0);
 
 // ---------- 렌더러 & 씬 ----------
@@ -622,7 +626,7 @@ function sound(freq = 220, dur = 0.08, type = 'noise', vol = 0.25) {
 const SPAWN = new THREE.Vector3(0, 0, 31);
 const player = { pos: SPAWN.clone(), vel: new THREE.Vector3(), yaw: 0, pitch: 0.12, onGround: false };
 const EYE = 1.55, HALF_W = 0.3, BODY_H = 1.75, REACH = 4.6;
-const TURBO_MULT = 300;
+const TURBO_MULT = 1000;
 
 function solidAt(x, y, z) { // 월드 좌표의 블록 칸이 막혀 있는지
   if (y < 0) return true;
@@ -715,7 +719,7 @@ function edgeTurn(dt) {
 const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 document.addEventListener('keydown', e => {
   if (codeOpen) { if (e.code === 'Escape') closeCode(); return; }
-  if (rankOpen) { if (e.code === 'Escape' || e.code === 'KeyR') closeRank(); return; }
+  if (rankOpen) { if (e.code === 'Escape' || (e.code === 'KeyR' && e.target.id !== 'nickInput')) closeRank(); return; }
   if (petOpen) { if (e.code === 'Escape' || e.code === 'KeyP') closePets(); return; }
   if (e.code === 'KeyP' && playing && !shopOpen) { openPets(); return; }
   if (e.code === 'KeyR' && playing && !shopOpen) { openRank(); return; }
@@ -790,7 +794,7 @@ function renderShop() {
   if (state.bag >= BAG_MAX_LV) { bg.disabled = true; bg.textContent = '가방 최대 크기'; }
   else { bg.disabled = state.money < bagCost(); bg.textContent = `가방 ${bagCap()} → ${bagCap() + 20}칸 (${bagCost()} G)`; }
   const sp = document.getElementById('upSpeed');
-  if (swingTime() <= 0.16) { sp.disabled = true; sp.textContent = '속도 최대'; }
+  if (baseSwing() <= 0.16) { sp.disabled = true; sp.textContent = '속도 최대'; }
   else { sp.disabled = state.money < speedCost(); sp.textContent = `휘두르기 속도 Lv.${state.speed + 1} (${speedCost()} G)`; }
 }
 function sellAll() {
@@ -815,7 +819,7 @@ function buyBag() {
   save(); renderShop(); updateHud(); return true;
 }
 function buySpeed() {
-  if (swingTime() <= 0.16 || state.money < speedCost()) return false;
+  if (baseSwing() <= 0.16 || state.money < speedCost()) return false;
   state.money -= speedCost(); state.speed++;
   sound(660, 0.2, 'square', 0.08);
   save(); renderShop(); updateHud(); return true;
@@ -862,7 +866,7 @@ function updateHud() {
     + `⛰️ 높이 ${Math.max(0, Math.floor(player.pos.y))}m · 캔 블록 ${state.total}`
     + (state.equip.length ? `<br>🐾 ${state.equip.map(i => PETS[state.pets[i]].emoji).join(' ')}` : '')
     + (rank.myPlace ? `<br>🏆 내 순위 <b>${rank.myPlace}위</b>` : '')
-    + (state.turbo ? '<br>🛡️ <b>방탄유리 질주 ON</b>' : '');
+    + (state.turbo ? '<br>🛡️ <b>방탄유리 ON</b> (발 1000배·손 8배)' : '');
   invEl.innerHTML = ITEM_ORDER.filter(k => state.inv[k] > 0).map(k =>
     `<div class="slot"><span class="dot" style="background:${hex(ITEMS[k].color)}"></span>${ITEMS[k].name} ${state.inv[k]}</div>`).join('')
     || '<div class="slot" style="color:var(--muted)">가방이 비어 있어요</div>';
@@ -887,7 +891,7 @@ document.getElementById('codeForm').addEventListener('submit', e => {
   if (code === '방탄유리') {
     state.turbo = !state.turbo; save(); updateHud();
     sound(state.turbo ? 990 : 330, 0.35, 'triangle', 0.15);
-    toast(state.turbo ? '🛡️ 방탄유리 질주! 이동 속도 UP' : '방탄유리 질주 해제', state.turbo ? '#7ff3ff' : '#fff');
+    toast(state.turbo ? '🛡️ 방탄유리! 발도 손도 초고속' : '방탄유리 해제', state.turbo ? '#7ff3ff' : '#fff');
     closeCode();
   } else {
     codeMsg.textContent = '알 수 없는 코드예요.'; codeMsg.style.color = 'var(--bad)'; codeInput.select();
@@ -1075,7 +1079,18 @@ function updatePets(dt) {
 buildPetMeshes();
 
 // ---------- 순위 (공유 저장소) ----------
-// scores/<내 id> 문서 하나에 내 기록을 쓰고, 모두의 기록을 번 골드 순으로 구독.
+// claude.ai에서 열면 아티팩트 저장소(scores/<내 id>), 그 밖(GitHub Pages 등)에서는 Firebase(rock_scores/<익명 uid>)를 씀.
+// 둘 다 각자 기록 하나를 쓰고, 모두의 기록을 번 골드 순으로 구독. 설정 방법은 FIREBASE_SETUP.md.
+const FIREBASE_CONFIG = null;   // Firebase 웹 앱 설정값을 여기에 넣으면 공개 순위표가 켜짐
+const FB_VER = '10.14.1';
+const nickInput = document.getElementById('nickInput');
+try { nickInput.value = localStorage.getItem('pickaxePeak.nick') || ''; } catch (e) {}
+const myNick = () => (nickInput.value.trim() || '이름 없는 광부').slice(0, 12);
+let nickTimer;
+nickInput.addEventListener('input', () => {
+  try { localStorage.setItem('pickaxePeak.nick', nickInput.value.trim()); } catch (e) {}
+  clearTimeout(nickTimer); nickTimer = setTimeout(submitScore, 800);   // 입력이 멈추면 한 번만 기록
+});
 const rankBox = document.getElementById('rankBox'), rankList = document.getElementById('rankList'), rankNote = document.getElementById('rankNote');
 function openRank() {
   if (!playing) return;
@@ -1101,57 +1116,85 @@ async function renderRank() {
     if (r.id === rank.myId) li.className = 'me';
     const no = document.createElement('span'); no.className = 'no'; no.textContent = i + 1;
     const who = document.createElement('span'); who.className = 'who';
-    who.textContent = ((names[r.id] && names[r.id].name) || '이름 없는 광부') + (r.id === rank.myId ? ' (나)' : '');
+    who.textContent = (r.nick || (names[r.id] && names[r.id].name) || '이름 없는 광부') + (r.id === rank.myId ? ' (나)' : '');
     const sub = document.createElement('span'); sub.className = 'sub';
     const bestKey = ITEM_ORDER[Math.max(0, Math.min(ITEM_ORDER.length - 1, r.best | 0))];
     sub.textContent = `${PICK_NAMES[Math.max(0, Math.min(5, r.pick | 0))]} 곡괭이 · 블록 ${r.blocks | 0}개 · 최고 ${ITEMS[bestKey].name}`;
     who.appendChild(sub);
-    const gold = document.createElement('span'); gold.className = 'gold'; gold.textContent = `${(r.earned | 0).toLocaleString()} G`;
+    const gold = document.createElement('span'); gold.className = 'gold'; gold.textContent = `${Math.floor(r.earned || 0).toLocaleString()} G`;
     li.append(no, who, gold);
     return li;
   }));
   let note = rank.note;
   if (!note && rank.loaded && !rows.length) note = '아직 기록이 없어요. 광물을 팔면 첫 번째로 이름이 올라가요!';
-  if (!note && rank.db && !rank.myPlace) note = state.earned > 0 ? '내 기록은 50위 밖이에요.' : '광물을 상점에 팔면 순위에 올라가요.';
+  if (!note && rank.save && !rank.myPlace) note = state.earned > 0 ? '내 기록은 50위 밖이에요.' : '광물을 상점에 팔면 순위에 올라가요.';
   if (!note && !rank.loaded) note = '순위를 불러오는 중…';
   if (rank.readOnly) note = (note ? note + ' ' : '') + '이 공유 설정에서는 내 기록을 올릴 수 없어요 (참여자 이상 권한 필요).';
   rankNote.textContent = note;
   rankNote.style.color = rank.readOnly ? 'var(--bad)' : 'var(--muted)';
 }
 function myScore() {
-  return { earned: state.earned | 0, blocks: state.total | 0, pick: state.power | 0, best: state.best | 0, updatedAt: Date.now() };
+  const n = v => Math.max(0, Math.min(2e9, Math.floor(v || 0)));
+  return { nick: myNick(), earned: n(state.earned), blocks: n(state.total), pick: Math.min(5, state.power | 0), best: Math.min(8, state.best | 0) };
 }
 async function submitScore() {
-  if (!rank.db || !rank.myId || rank.readOnly || state.earned <= 0) return;
+  if (!rank.save || !rank.myId || rank.readOnly || state.earned <= 0) return;
   if (rank.writing) { rank.dirty = true; return; }       // 한 번에 하나씩만 기록
   rank.writing = true;
-  try { await rank.db.collection('scores').doc(rank.myId).set(myScore()); }
-  catch (e) { if (e && e.code === 'invalid_argument') { rank.readOnly = true; renderRank(); } }
+  try { await rank.save(myScore()); }
+  catch (e) { if (e && (e.code === 'invalid_argument' || e.code === 'permission-denied')) { rank.readOnly = true; renderRank(); } }
   rank.writing = false;
   if (rank.dirty) { rank.dirty = false; submitScore(); }
 }
+function gotRanking(rows, final) {
+  rank.rows = rows;
+  if (final) { rank.loaded = true; rank.note = ''; }
+  renderRank(); updateHud();
+  // 처음 한 번: 이 기기 기록이 순위표보다 앞서 있으면 올림
+  if (rank.loaded && !rank.synced && rank.myId && rank.save) {
+    rank.synced = true;
+    const mine = rows.find(r => r.id === rank.myId);
+    if (!mine || Math.floor(mine.earned || 0) < Math.floor(state.earned)) submitScore();
+  }
+}
+function loadScript(src) {
+  return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); });
+}
+async function initFirebaseRanking(cfg) {
+  const timer = setTimeout(() => { if (!rank.loaded) { rank.note = '순위를 아직 불러오지 못했어요. 잠시 후 다시 열어 보세요.'; renderRank(); } }, 10000);
+  try {
+    const base = `https://cdn.jsdelivr.net/npm/firebase@${FB_VER}/`;
+    await loadScript(base + 'firebase-app-compat.js');
+    await Promise.all([loadScript(base + 'firebase-auth-compat.js'), loadScript(base + 'firebase-firestore-compat.js')]);
+    const fb = window.firebase;
+    const app = fb.apps.length ? fb.app() : fb.initializeApp(cfg);
+    const cred = await app.auth().signInAnonymously();
+    rank.myId = cred.user.uid;
+    const col = app.firestore().collection('rock_scores');
+    rank.save = doc => col.doc(rank.myId).set(Object.assign({}, doc, { at: fb.firestore.FieldValue.serverTimestamp() }));
+    col.orderBy('earned', 'desc').limit(50).onSnapshot(snap => {
+      clearTimeout(timer);
+      gotRanking(snap.docs.map(d => ({ id: d.id, ...d.data() })), !snap.metadata.fromCache);
+    }, () => { clearTimeout(timer); rank.loaded = true; rank.note = '순위를 불러올 수 없어요.'; renderRank(); });
+  } catch (e) { clearTimeout(timer); rank.loaded = true; rank.note = '순위표 서버에 연결하지 못했어요.'; renderRank(); }
+}
 (async function initRanking() {
   const use = window.claude && window.claude.use;
-  if (!use) { rank.note = '순위는 claude.ai에서 이 게임을 열었을 때만 볼 수 있어요.'; return; }
+  if (!use) {
+    if (FIREBASE_CONFIG) return initFirebaseRanking(FIREBASE_CONFIG);
+    rank.note = '이 주소의 공개 순위표는 아직 연결되지 않았어요. (claude.ai 링크에서는 순위를 볼 수 있어요)';
+    return;
+  }
   const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
   if (!db) { rank.note = '순위를 보려면 claude.ai에 로그인해 주세요.'; renderRank(); return; }
   rank.db = db; rank.user = user;
   rank.myId = user ? await user.id() : null;
+  rank.save = doc => db.collection('scores').doc(rank.myId).set(Object.assign({}, doc, { updatedAt: Date.now() }));
   if (user && user.can) { try { if ((await user.can('data.write')) === false) rank.readOnly = true; } catch (e) {} }
   const timer = setTimeout(() => { if (!rank.loaded) { rank.note = '순위를 아직 불러오지 못했어요. 잠시 후 다시 열어 보세요.'; renderRank(); } }, 10000);
-  let synced = false;
   db.collection('scores').orderBy('earned', 'desc').limit(50).onSnapshot(snap => {
-    rank.rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (!snap.metadata.fromCache) { rank.loaded = true; rank.note = ''; clearTimeout(timer); }
-    renderRank(); updateHud();
-    // 처음 한 번: 이 기기 기록이 저장소보다 앞서 있으면 올림
-    if (rank.loaded && !synced && rank.myId) {
-      synced = true;
-      db.collection('scores').doc(rank.myId).get().then(d => {
-        const mine = d.exists ? d.data() : null;
-        if (!mine || (mine.earned | 0) < (state.earned | 0)) submitScore();
-      }).catch(() => {});
-    }
+    if (!snap.metadata.fromCache) clearTimeout(timer);
+    gotRanking(snap.docs.map(d => ({ id: d.id, ...d.data() })), !snap.metadata.fromCache);
   }, err => { clearTimeout(timer); rank.loaded = true; rank.note = '순위를 불러올 수 없어요.'; renderRank(); });
 })();
 

@@ -32,3 +32,16 @@ const FIREBASE_CONFIG = { apiKey: "...", authDomain: "...", projectId: "...", st
 - 순위표 외 다른 데이터 쓰기
 
 브라우저 개발자 도구로 그럴듯한 가짜 점수를 넣는 것까지 완전히 막을 수는 없습니다. 이상한 기록은 Firebase 콘솔의 Firestore 화면에서 직접 지우면 됩니다.
+
+---
+
+# 곡괭이 봉우리(index.html) 공개 순위표
+
+같은 Firebase 프로젝트를 그대로 씁니다. 위 2단계까지 해 두었다면:
+1. Firestore **규칙(Rules)** 탭에 이 저장소의 최신 `firestore.rules`를 다시 붙여 넣고 **게시**합니다. (`rock_scores` 규칙이 추가됨)
+2. 같은 `firebaseConfig` 값을 `index.html`의 `const FIREBASE_CONFIG = null;` 자리에 넣습니다. (Claude에게 붙여 주면 넣어 드립니다)
+
+그러면 `https://leewonyoungethan.github.io/Rock/` 에서 누구나 로그인 없이 순위를 보고, 닉네임으로 기록을 올립니다.
+claude.ai 아티팩트 링크에서는 claude.ai 자체 저장소의 순위표를 씁니다 (아티팩트 안에서는 Firebase에 연결할 수 없어서 두 순위표는 따로입니다).
+
+규칙이 막는 것: 남의 기록 덮어쓰기·삭제, 번 골드를 줄이는 덮어쓰기, 형식이 틀린 기록.
