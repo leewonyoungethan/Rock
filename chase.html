@@ -1112,7 +1112,7 @@ function update(dt) {
   const rotT = viewMode === 'chase' ? -Math.PI / 2 - player.a : 0;
   cam.rot += wrapA(rotT - cam.rot) * Math.min(1, dt * (viewMode === 'chase' ? 4.5 : 6));
   cam.rot = wrapA(cam.rot);
-  const zt = baseZoom() * (1 - Math.min(0.24, player.speed / 2400) - (G.boosting ? 0.05 : 0));
+  const zt = baseZoom() * (viewMode === 'chase' && !G.over ? 1.7 : 1) * (1 - Math.min(0.24, player.speed / 2400) - (G.boosting ? 0.05 : 0));
   cam.zoom = lerp(cam.zoom, zt, Math.min(1, dt * 2));
   G.shake = Math.max(0, G.shake - dt * 30);
   G.hurt = Math.max(0, G.hurt - dt * 1.5);
@@ -1287,12 +1287,12 @@ function render() {
   // trees and buildings
   for (const t of visTrees) {
     if (t.x < V.x0 - 60 || t.x > V.x1 + 60 || t.y < V.y0 - 60 || t.y > V.y1 + 60) continue;
-    const k = 0.05, ox = (t.x - cam.x) * k, oy = (t.y - cam.y) * k;
+    const k = viewMode === 'chase' ? 0.09 : 0.05, ox = (t.x - cam.x) * k, oy = (t.y - cam.y) * k;
     ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.arc(t.x + 4, t.y + 5, t.r + 3, 0, 6.283); ctx.fill();
     ctx.fillStyle = '#16351f'; ctx.beginPath(); ctx.arc(t.x + ox, t.y + oy, t.r + 6, 0, 6.283); ctx.fill();
     ctx.fillStyle = '#1f4a2b'; ctx.beginPath(); ctx.arc(t.x + ox * 1.4 - 3, t.y + oy * 1.4 - 3, t.r, 0, 6.283); ctx.fill();
   }
-  const vb = visBuildings.filter(b => b.x + b.w > V.x0 - 260 && b.x < V.x1 + 260 && b.y + b.h > V.y0 - 260 && b.y < V.y1 + 260);
+  const vb = visBuildings.filter(b => b.x + b.w > V.x0 - 420 && b.x < V.x1 + 420 && b.y + b.h > V.y0 - 420 && b.y < V.y1 + 420);
   vb.sort((a, b) => Math.hypot(b.x + b.w / 2 - cam.x, b.y + b.h / 2 - cam.y) - Math.hypot(a.x + a.w / 2 - cam.x, a.y + a.h / 2 - cam.y));
   for (const b of vb) drawBuilding(b);
 
@@ -1402,7 +1402,7 @@ function drawHeist(h, t) {
   ctx.textAlign = 'center'; ctx.fillStyle = '#ffc634'; ctx.font = '16px "Black Han Sans", sans-serif'; ctx.fillText('금고 $' + fmtNum(h.val), h.x, h.y - 38);
 }
 function drawBuilding(b) {
-  const k = b.hgt / 1000, cx = cam.x, cy = cam.y;
+  const k = b.hgt / (viewMode === 'chase' ? 560 : 1000), cx = cam.x, cy = cam.y;
   const P = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
   const T = P.map(p => [p[0] + (p[0] - cx) * k, p[1] + (p[1] - cy) * k]);
   const faces = [];
