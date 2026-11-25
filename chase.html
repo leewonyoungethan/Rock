@@ -420,7 +420,7 @@ function randRoadPoint() {
 let G = null, player = null, cops = [], civs = [], hulks = [], particles = [], skids = [], floats = [], pickups = [];
 let cam = { x: W / 2, y: W / 2, zoom: 1 };
 const TH = [0, 25, 60, 110, 180];
-const COPS_FOR = [2, 3, 5, 7, 9];
+const COPS_FOR = [3, 5, 7, 10, 13];
 const PP = { accel: 440, max: 560, boost: 1.45, brake: 950, rev: 430, revAccel: 600, grip: 8.5, gripHB: 1.35, turn: 3.15 };
 
 function makeCar(x, y, a, kind) {
@@ -443,7 +443,7 @@ function newGame(menu) {
   spawnHeist();
   cam.x = player.x; cam.y = player.y;
   computeFlow(player.x, player.y);
-  if (!menu) { spawnCop(); spawnCop(); }
+  if (!menu) { spawnCop(); spawnCop(); spawnCop(); }
   renderMiniBase();
 }
 
@@ -1041,7 +1041,7 @@ function update(dt) {
   // --- spawn / despawn
   for (let i = cops.length - 1; i >= 0; i--) if (dist(cops[i], player) > 2000) cops.splice(i, 1);
   G.spawnT -= dt;
-  if (!G.over && G.spawnT <= 0 && cops.length < COPS_FOR[G.stars - 1]) { spawnCop(); G.spawnT = G.stars >= 3 ? 1.4 : 2.6; }
+  if (!G.over && G.spawnT <= 0 && cops.length < COPS_FOR[G.stars - 1]) { spawnCop(); G.spawnT = G.stars >= 3 ? 0.9 : 1.7; }
 
   // --- helicopter
   if (G.stars >= 4 && !G.heli) { G.heli = { x: player.x - 900, y: player.y - 900, a: 0, rot: 0 }; toast('경찰 헬기 출동!', 'blue'); }
