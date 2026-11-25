@@ -534,7 +534,7 @@ function spawnCop() {
     cops.push(c); return;
   }
 }
-function copParams() { return { accel: 410 + G.stars * 12, max: 455 + G.stars * 22, boost: 1, brake: 950, rev: 220, grip: 7.6, gripHB: 1.7, turn: 2.75 + G.stars * 0.05 }; }
+function copParams() { return { accel: 490 + G.stars * 15, max: 505 + G.stars * 25, boost: 1, brake: 950, rev: 220, grip: 7.6, gripHB: 1.7, turn: 2.75 + G.stars * 0.05 }; }
 function copAI(c, dt) {
   const inp = { gas: true, brake: false, steer: 0, hb: false, boost: false };
   let tx, ty;
